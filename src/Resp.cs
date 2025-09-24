@@ -14,7 +14,7 @@ public static class Resp
         {
             Console.WriteLine("Got ping");
             message = new Ping();
-            consumed = 14;
+            consumed = 14; // The final byte will be a newline
             return true;
         }
 
