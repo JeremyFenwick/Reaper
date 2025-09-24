@@ -9,7 +9,11 @@ public class Server(int port)
     public void Start()
     {
         _listener.Start();
-        var client = _listener.AcceptTcpClient();
+        while (true)
+        {
+            var client = _listener.AcceptTcpClient();
+            Task.Run(() => HandleClient(client));
+        }
     }
 
     private async Task HandleClient(TcpClient client)
