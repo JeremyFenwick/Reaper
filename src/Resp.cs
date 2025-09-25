@@ -5,6 +5,8 @@ namespace codecrafters_redis;
 public abstract record RespMessage;
 public record Ping: RespMessage;
 public record Echo(string Message): RespMessage;
+public record Set(string Key, string Value): RespMessage;
+public record Get(string Key): RespMessage;
 public record Unknown : RespMessage;
 
 public static class Resp
@@ -115,6 +117,8 @@ public static class Resp
         {
             "PING" => new Ping(),
             "ECHO" => new Echo(items[1]),
+            "SET" => new Set(items[1], items[2]),
+            "GET" => new Get(items[1]),
             _ => new Unknown()
         };
     }

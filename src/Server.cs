@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
@@ -6,6 +7,7 @@ namespace codecrafters_redis;
 public class Server(int port)
 {
     private readonly TcpListener _listener = TcpListener.Create(port);
+    private readonly ConcurrentDictionary<string, string> _db = new();
 
     public async Task Start()
     {
@@ -36,7 +38,7 @@ public class Server(int port)
             while (offset < bufferLength && Resp.TryParse(buffer.AsSpan(offset, bufferLength - offset), out var respMsg,
                        out var consumed))
             {
-                await SendResponse(writer, respMsg);
+                await HandleRequest(writer, respMsg);
                 await writer.FlushAsync();
                 offset += consumed;
             }
@@ -48,7 +50,7 @@ public class Server(int port)
         }
     }
 
-    private async Task SendResponse(StreamWriter writer, RespMessage? message)
+    private async Task HandleRequest(StreamWriter writer, RespMessage? message)
     {
         switch (message)
         {
@@ -57,6 +59,20 @@ public class Server(int port)
                 break;
             case Echo echo:
                 await writer.WriteAsync($"${echo.Message.Length}\r\n{echo.Message}\r\n");
+                break;
+            case Set set:
+                _db[set.Key] = set.Value;
+                await writer.WriteAsync("+OK\r\n");
+                break;
+            case Get get:
+                if (_db.TryGetValue(get.Key, out var value))
+                {
+                    await writer.WriteAsync($"${value.Length}\r\n{value}\r\n");
+                }
+                else
+                {
+                    await writer.WriteAsync("$-1\r\n");
+                }
                 break;
         }
     }
