@@ -101,7 +101,7 @@ public class Server(int port)
                 await WriteBulkString(writer, dbEntry.Value);
                 break;
             case RPush rPush:
-                if (!_listDb.ContainsKey(rPush.ListName)) _listDb[rPush.ListName] = new List<string>();
+                if (!_listDb.ContainsKey(rPush.ListName)) _listDb[rPush.ListName] = [];
                 _listDb[rPush.ListName].Add(rPush.Value);
                 await WriteInteger(writer, _listDb[rPush.ListName].Count);
                 break;
