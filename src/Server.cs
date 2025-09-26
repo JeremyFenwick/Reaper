@@ -81,27 +81,39 @@ public class Server(int port)
         switch (message)
         {
             case Ping _:
-                await writer.WriteAsync("+PONG\r\n");
+                await WriteSimpleString(writer, "PONG");
                 break;
             case Echo echo:
-                await writer.WriteAsync($"${echo.Message.Length}\r\n{echo.Message}\r\n");
+                await WriteBulkString(writer, echo.Message);
                 break;
             case Set set:
-                if (set.Expiry.HasValue) _db[set.Key] = new DbEntry(set.Value, set.Expiry.Value);
-                else _db[set.Key] = new DbEntry(set.Value, null);
+                _db[set.Key] = new DbEntry(set.Value, set.Expiry);
                 await writer.WriteAsync("+OK\r\n");
                 break;
             case Get get:
-                if (_db.TryGetValue(get.Key, out var dbEntry))
+                if (!_db.TryGetValue(get.Key, out var dbEntry) || dbEntry.Expiry is not null && dbEntry.Expiry < DateTime.UtcNow)
                 {
-                    if (dbEntry.Expiry.HasValue && dbEntry.Expiry.Value < DateTime.UtcNow) await writer.WriteAsync("$-1\r\n");
-                    else await writer.WriteAsync($"${dbEntry.Value.Length}\r\n{dbEntry.Value}\r\n");
+                    await WriteNullBulkString(writer);
+                    return;
                 }
-                else
-                {
-                    await writer.WriteAsync("$-1\r\n");
-                }
+
+                await WriteBulkString(writer, dbEntry.Value);
                 break;
         }
+    }
+    
+    private static async Task WriteSimpleString(StreamWriter writer, string value)
+    {
+        await writer.WriteAsync($"+{value}\r\n");
+    }
+
+    private static async Task WriteBulkString(StreamWriter writer, string value)
+    {
+        await writer.WriteAsync($"${value.Length}\r\n{value}\r\n");
+    }
+
+    private static async Task WriteNullBulkString(StreamWriter writer)
+    {
+        await writer.WriteAsync("$-1\r\n");
     }
 }
