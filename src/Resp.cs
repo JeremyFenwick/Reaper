@@ -117,6 +117,7 @@ public static class Resp
             "RPUSH" => new RPush(items[1], items[2..]),
             "LPUSH" => new LPush(items[1], items[2..]),
             "LRANGE" => new LRange(items[1], int.Parse(items[2]), int.Parse(items[3])),
+            "LLEN" => new LLen(items[1]),
             _ => new Unknown()
         };
     }

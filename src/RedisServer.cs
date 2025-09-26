@@ -112,6 +112,13 @@ public class RedisServer(int port)
             case LRange lRange:
                 await HandleLRange(writer, lRange);
                 break;
+            case LLen lLen:
+                if (!_listDb.TryGetValue(lLen.ListName, out var list))
+                {
+                    await WriteInteger(writer, 0);
+                    return;
+                }
+                await WriteInteger(writer, list.Count);
         }
     }
 
