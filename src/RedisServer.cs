@@ -119,6 +119,7 @@ public class RedisServer(int port)
                     return;
                 }
                 await WriteInteger(writer, list.Count);
+                break;
         }
     }
 
