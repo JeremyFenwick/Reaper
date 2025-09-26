@@ -116,6 +116,7 @@ public static class Resp
     private static RespMessage CreateMessage(List<string> items)
     {
         var normalizedItems = items.Select(x => x.ToUpperInvariant()).ToList();
+        
         return normalizedItems[0] switch // We are case insensitive
         {
             "PING" => new Ping(),

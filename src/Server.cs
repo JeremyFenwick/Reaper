@@ -94,7 +94,7 @@ public class Server(int port)
             case Get get:
                 if (_db.TryGetValue(get.Key, out var dbEntry))
                 {
-                    if (dbEntry.Expiry.HasValue && dbEntry.Expiry.Value >= DateTime.UtcNow) await writer.WriteAsync("$-1\r\n");
+                    if (dbEntry.Expiry.HasValue && dbEntry.Expiry.Value < DateTime.UtcNow) await writer.WriteAsync("$-1\r\n");
                     else await writer.WriteAsync($"${dbEntry.Value.Length}\r\n{dbEntry.Value}\r\n");
                 }
                 else
