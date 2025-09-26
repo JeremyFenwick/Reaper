@@ -5,10 +5,9 @@ namespace codecrafters_redis;
 public abstract record RespMessage;
 public record Ping: RespMessage;
 public record Echo(string Message): RespMessage;
-
 public record Set(string Key, string Value, DateTime? Expiry) : RespMessage;
-
 public record Get(string Key): RespMessage;
+public record RPush(string ListName, string Value): RespMessage;
 public record Unknown : RespMessage;
 
 public static class Resp
@@ -123,6 +122,7 @@ public static class Resp
             "ECHO" => new Echo(items[1]),
             "SET" => SetMessage(items),
             "GET" => new Get(items[1]),
+            "RPUSH" => new RPush(items[1], items[2]),
             _ => new Unknown()
         };
     }
@@ -138,6 +138,5 @@ public static class Resp
             "PX" => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
             _    => new Set(items[1], items[2], null)
         };
-
     }
 }
