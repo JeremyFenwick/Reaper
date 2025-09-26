@@ -3,7 +3,7 @@ using System.Net.Sockets;
 
 namespace codecrafters_redis;
 
-public class Server(int port)
+public class RedisServer(int port)
 {
     private record DbEntry(string Value, DateTime? Expiry);
     
@@ -104,34 +104,46 @@ public class Server(int port)
                 rPush.Elements.ForEach(e => _listDb[rPush.ListName].Add(e));
                 await WriteInteger(writer, _listDb[rPush.ListName].Count);
                 break;
+            case LPush lPush:
+                if (!_listDb.ContainsKey(lPush.ListName)) _listDb[lPush.ListName] = [];
+                lPush.Elements.ForEach(e => _listDb[lPush.ListName].Insert(0, e));
+                await WriteInteger(writer, _listDb[lPush.ListName].Count);
+                break;
             case LRange lRange:
-                if (!_listDb.TryGetValue(lRange.ListName, out var list))
-                {
-                    await WriteRespArray(writer, []);
-                    break;
-                }
-
-                int count = list.Count;
-
-                int start = lRange.Start < 0 ? count + lRange.Start : lRange.Start;
-                int end = lRange.End < 0 ? count + lRange.End : lRange.End;
-
-                // Clamp start and end
-                start = Math.Max(0, start);
-                end = Math.Min(count - 1, end);
-
-                // If start is after end, return empty
-                if (start > end)
-                {
-                    await WriteRespArray(writer, []);
-                    break;
-                }
-
-                var range = list.GetRange(start, end - start + 1);
-                await WriteRespArray(writer, range);
+                await HandleLRange(writer, lRange);
                 break;
         }
     }
+
+    private async Task HandleLRange(StreamWriter writer, LRange lRange) 
+    {
+        if (!_listDb.TryGetValue(lRange.ListName, out var list))
+        {
+            await WriteRespArray(writer, []);
+            return;
+        }
+
+        var count = list.Count;
+
+        var start = lRange.Start < 0 ? count + lRange.Start : lRange.Start;
+        var end = lRange.End < 0 ? count + lRange.End : lRange.End;
+
+        // Clamp start and end
+        start = Math.Max(0, start);
+        end = Math.Min(count - 1, end);
+
+        // If start is after end, return empty
+        if (start > end)
+        {
+            await WriteRespArray(writer, []);
+            return;
+        }
+
+        var range = list.GetRange(start, end - start + 1);
+        await WriteRespArray(writer, range);
+    }
+    
+    // HELPER METHODS FOR WRITING
     
     private static async Task WriteSimpleString(StreamWriter writer, string value)
     {
