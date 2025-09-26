@@ -87,7 +87,8 @@ public class Server(int port)
                 await writer.WriteAsync($"${echo.Message.Length}\r\n{echo.Message}\r\n");
                 break;
             case Set set:
-                _db[set.Key] = new DbEntry(set.Value, null);
+                if (set.Expiry.HasValue) _db[set.Key] = new DbEntry(set.Value, set.Expiry.Value);
+                else _db[set.Key] = new DbEntry(set.Value, null);
                 await writer.WriteAsync("+OK\r\n");
                 break;
             case Get get:
