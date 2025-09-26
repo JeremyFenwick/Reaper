@@ -110,8 +110,10 @@ public class Server(int port)
                     await WriteRespArray(writer, []);
                     break;
                 }
-                var end = Math.Min(lRange.End, list.Count - 1);
-                await WriteRespArray(writer, list.GetRange(lRange.Start, end - lRange.Start + 1));
+                var start = lRange.Start < 0 ? list.Count + lRange.Start : lRange.Start;
+                var end = lRange.End < 0 ? list.Count + lRange.End : lRange.End;
+                end = end > list.Count - 1 ? list.Count - 1 : end;
+                await WriteRespArray(writer, list.GetRange(start, end - start + 1));
                 break;
         }
     }
