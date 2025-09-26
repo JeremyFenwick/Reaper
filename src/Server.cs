@@ -102,7 +102,7 @@ public class Server(int port)
                 break;
             case RPush rPush:
                 if (!_listDb.ContainsKey(rPush.ListName)) _listDb[rPush.ListName] = [];
-                _listDb[rPush.ListName].Add(rPush.Value);
+                rPush.Elements.ForEach(e => _listDb[rPush.ListName].Add(e));
                 await WriteInteger(writer, _listDb[rPush.ListName].Count);
                 break;
         }
