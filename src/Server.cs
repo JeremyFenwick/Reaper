@@ -6,16 +6,42 @@ namespace codecrafters_redis;
 
 public class Server(int port)
 {
+    private record DbEntry(string Value, DateTime? Expiry);
+    
     private readonly TcpListener _listener = TcpListener.Create(port);
-    private readonly ConcurrentDictionary<string, string> _db = new();
+    private readonly ConcurrentDictionary<string, DbEntry> _db = new();
 
     public async Task Start()
     {
         _listener.Start();
+        // Create the cancellation token source
+        var cancellationTokenSource = new CancellationTokenSource();
+        // Run the db cleaner
+        _ = Task.Run(() => DbCleanUp(cancellationTokenSource.Token));
+        
         while (true)
         {
             var client = await _listener.AcceptTcpClientAsync();
             _ = Task.Run(() => HandleClient(client));
+        }
+    }
+
+    private async Task DbCleanUp(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            // Wait 10 seconds
+            await Task.Delay(10000, cancellationToken);
+            // Get the expired keys
+            var expiredKeys = _db
+                .Where(kvp => kvp.Value.Expiry.HasValue && kvp.Value.Expiry.Value < DateTime.UtcNow)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var expiredEntry in expiredKeys)
+            {
+                _db.TryRemove(expiredEntry, out _);
+            }
         }
     }
 
@@ -61,13 +87,14 @@ public class Server(int port)
                 await writer.WriteAsync($"${echo.Message.Length}\r\n{echo.Message}\r\n");
                 break;
             case Set set:
-                _db[set.Key] = set.Value;
+                _db[set.Key] = new DbEntry(set.Value, null);
                 await writer.WriteAsync("+OK\r\n");
                 break;
             case Get get:
-                if (_db.TryGetValue(get.Key, out var value))
+                if (_db.TryGetValue(get.Key, out var dbEntry))
                 {
-                    await writer.WriteAsync($"${value.Length}\r\n{value}\r\n");
+                    if (dbEntry.Expiry.HasValue && dbEntry.Expiry.Value > DateTime.UtcNow) await writer.WriteAsync("$-1\r\n");
+                    else await writer.WriteAsync($"${dbEntry.Value.Length}\r\n{dbEntry.Value}\r\n");
                 }
                 else
                 {

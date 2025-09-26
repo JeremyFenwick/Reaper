@@ -5,7 +5,9 @@ namespace codecrafters_redis;
 public abstract record RespMessage;
 public record Ping: RespMessage;
 public record Echo(string Message): RespMessage;
-public record Set(string Key, string Value): RespMessage;
+
+public record Set(string Key, string Value, DateTime? Expiry) : RespMessage;
+
 public record Get(string Key): RespMessage;
 public record Unknown : RespMessage;
 
@@ -117,24 +119,19 @@ public static class Resp
         {
             "PING" => new Ping(),
             "ECHO" => new Echo(items[1]),
-            "SET" => new Set(items[1], items[2]),
+            "SET" => SetMessage(items),
             "GET" => new Get(items[1]),
             _ => new Unknown()
         };
     }
-    // public static bool TryParse(ReadOnlySpan<byte> buffer, out RespMessage? message, out int consumed)
-    // {
-    //     message = null;
-    //     consumed = 0;
-    //     
-    //     if (buffer.StartsWith("*1\r\n$4\r\nPING\r\n"u8))
-    //     {
-    //         Console.WriteLine("Got ping");
-    //         message = new Ping();
-    //         consumed = 14; // The final byte will be a newline
-    //         return true;
-    //     }
-    //
-    //     return false; // not enough bytes or unknown message
-    // }
+
+    private static RespMessage SetMessage(List<string> items)
+    {
+        return items switch
+        {
+            [_, _, _, "EX", _, ..] => new Set(items[1], items[2], DateTime.UtcNow.AddSeconds(int.Parse(items[4]))),
+            [_, _, _, "PX", _, ..] => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
+            _ => new Set(items[1], items[2], null)
+        };
+    }
 }
