@@ -115,12 +115,13 @@ public static class Resp
     
     private static RespMessage CreateMessage(List<string> items)
     {
-        return items[0].ToUpper() switch // We are case insensitive
+        var normalizedItems = items.Select(x => x.ToUpperInvariant()).ToList();
+        return normalizedItems[0] switch // We are case insensitive
         {
             "PING" => new Ping(),
-            "ECHO" => new Echo(items[1]),
-            "SET" => SetMessage(items),
-            "GET" => new Get(items[1]),
+            "ECHO" => new Echo(normalizedItems[1]),
+            "SET" => SetMessage(normalizedItems),
+            "GET" => new Get(normalizedItems[1]),
             _ => new Unknown()
         };
     }
