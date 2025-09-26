@@ -105,15 +105,30 @@ public class Server(int port)
                 await WriteInteger(writer, _listDb[rPush.ListName].Count);
                 break;
             case LRange lRange:
-                if (!_listDb.TryGetValue(lRange.ListName, out var list) || lRange.Start >= list.Count)
+                if (!_listDb.TryGetValue(lRange.ListName, out var list))
                 {
                     await WriteRespArray(writer, []);
                     break;
                 }
-                var start = lRange.Start < 0 ? list.Count + lRange.Start : lRange.Start;
-                var end = lRange.End < 0 ? list.Count + lRange.End : lRange.End;
-                end = end > list.Count - 1 ? list.Count - 1 : end;
-                await WriteRespArray(writer, list.GetRange(start, end - start + 1));
+
+                int count = list.Count;
+
+                int start = lRange.Start < 0 ? count + lRange.Start : lRange.Start;
+                int end = lRange.End < 0 ? count + lRange.End : lRange.End;
+
+                // Clamp start and end
+                start = Math.Max(0, start);
+                end = Math.Min(count - 1, end);
+
+                // If start is after end, return empty
+                if (start > end)
+                {
+                    await WriteRespArray(writer, []);
+                    break;
+                }
+
+                var range = list.GetRange(start, end - start + 1);
+                await WriteRespArray(writer, range);
                 break;
         }
     }
