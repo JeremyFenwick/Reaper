@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 
 namespace codecrafters_redis;
 
@@ -105,6 +104,15 @@ public class Server(int port)
                 rPush.Elements.ForEach(e => _listDb[rPush.ListName].Add(e));
                 await WriteInteger(writer, _listDb[rPush.ListName].Count);
                 break;
+            case LRange lRange:
+                if (!_listDb.TryGetValue(lRange.ListName, out var list) || lRange.Start >= list.Count)
+                {
+                    await WriteRespArray(writer, []);
+                    break;
+                }
+                var end = Math.Min(lRange.End, list.Count - 1);
+                await WriteRespArray(writer, list.GetRange(lRange.Start, end - lRange.Start + 1));
+                break;
         }
     }
     
@@ -126,5 +134,14 @@ public class Server(int port)
     private static async Task WriteInteger(StreamWriter writer, int value)
     {
         await writer.WriteAsync($":{value}\r\n");
+    }
+
+    private static async Task WriteRespArray(StreamWriter writer, List<string> elements)
+    {
+        await writer.WriteAsync($"*{elements.Count}\r\n");
+        foreach (var element in elements)
+        {
+            await WriteBulkString(writer, element);
+        }
     }
 }

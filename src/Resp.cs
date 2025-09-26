@@ -8,6 +8,7 @@ public record Echo(string Message): RespMessage;
 public record Set(string Key, string Value, DateTime? Expiry) : RespMessage;
 public record Get(string Key): RespMessage;
 public record RPush(string ListName, List<string> Elements): RespMessage;
+public record LRange(string ListName, int Start, int End): RespMessage;
 public record Unknown : RespMessage;
 
 public static class Resp
@@ -123,6 +124,7 @@ public static class Resp
             "SET" => SetMessage(items),
             "GET" => new Get(items[1]),
             "RPUSH" => new RPush(items[1], items[2..]),
+            "LRANGE" => new LRange(items[1], int.Parse(items[2]), int.Parse(items[3])),
             _ => new Unknown()
         };
     }
