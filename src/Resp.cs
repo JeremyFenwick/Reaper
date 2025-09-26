@@ -115,25 +115,29 @@ public static class Resp
     
     private static RespMessage CreateMessage(List<string> items)
     {
-        var normalizedItems = items.Select(x => x.ToUpperInvariant()).ToList();
+        var command = items[0].ToUpperInvariant(); // just normalize the command
         
-        return normalizedItems[0] switch // We are case insensitive
+        return command switch // We are case insensitive
         {
             "PING" => new Ping(),
-            "ECHO" => new Echo(normalizedItems[1]),
-            "SET" => SetMessage(normalizedItems),
-            "GET" => new Get(normalizedItems[1]),
+            "ECHO" => new Echo(items[1]),
+            "SET" => SetMessage(items),
+            "GET" => new Get(items[1]),
             _ => new Unknown()
         };
     }
 
     private static RespMessage SetMessage(List<string> items)
     {
-        return items switch
+        if (items.Count < 5) return new Set(items[1], items[2], null);
+        
+        var modifier = items[3].ToUpperInvariant();
+        return modifier switch
         {
-            [_, _, _, "EX", _, ..] => new Set(items[1], items[2], DateTime.UtcNow.AddSeconds(int.Parse(items[4]))),
-            [_, _, _, "PX", _, ..] => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
-            _ => new Set(items[1], items[2], null)
+            "EX" => new Set(items[1], items[2], DateTime.UtcNow.AddSeconds(int.Parse(items[4]))),
+            "PX" => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
+            _    => new Set(items[1], items[2], null)
         };
+
     }
 }
