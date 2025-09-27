@@ -84,8 +84,16 @@ public class RedisServer(int port)
             LRange lRange => HandleLRangeAsync(writer, lRange),
             LLen lLen => HandleLLenAsync(writer, lLen),
             LPop lPop => HandleLPopAsync(writer, lPop),
+            BlPop blPop => HandleBlPopAsync(writer, blPop),
             _ => Task.CompletedTask
         });
+    }
+
+    private async Task HandleBlPopAsync(StreamWriter writer, BlPop blPop)
+    {
+        var text = await _listDb.BlPopAsync(blPop.ListName, blPop.TimeOut == 0 ? null : blPop.TimeOut * 1000);
+        if (text == null) await Resp.WriteNullBulkStringAsync(writer);
+        else await Resp.WriteBulkStringAsync(writer, text);
     }
 
 
