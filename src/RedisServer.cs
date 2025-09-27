@@ -10,6 +10,8 @@ public class RedisServer(int port)
     private readonly TcpListener _listener = TcpListener.Create(port);
     private readonly ConcurrentDictionary<string, DbEntry> _kvDb = new();
     private readonly ConcurrentDictionary<string, List<string>> _listDb = new();
+    
+    // BASIC START FUNCTIONS + RELATED HELPERS
 
     public async Task Start()
     {
@@ -44,6 +46,8 @@ public class RedisServer(int port)
             }
         }
     }
+    
+    // CLIENT HANDLING
 
     private async Task HandleClient(TcpClient client)
     {
@@ -120,6 +124,16 @@ public class RedisServer(int port)
                 }
                 await WriteInteger(writer, list.Count);
                 break;
+            case LPop lPop:
+                if (!_listDb.TryGetValue(lPop.ListName, out var list2) || list2.Count == 0)
+                {
+                    await WriteNullBulkString(writer);
+                    return;
+                }
+                var element = list2[0];
+                list2.RemoveAt(0);
+                await WriteBulkString(writer, element);
+                break;
         }
     }
 
@@ -151,7 +165,7 @@ public class RedisServer(int port)
         await WriteRespArray(writer, range);
     }
     
-    // HELPER METHODS FOR WRITING
+    // HELPER METHODS FOR WRITING RESPONSES
     
     private static async Task WriteSimpleString(StreamWriter writer, string value)
     {
