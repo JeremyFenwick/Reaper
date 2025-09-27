@@ -124,8 +124,18 @@ public class RedisServer(int port)
     private async Task HandleLPopAsync(StreamWriter writer, LPop lPop)
     {
         var text = await _listDb.PopAsync(lPop.ListName, lPop.Count);
-        if (text.Count == 0) await Resp.WriteNullBulkStringAsync(writer);
-        else await Resp.WriteRespArrayAsync(writer, text);
+        switch (text.Count)
+        {
+            case 0:
+                await Resp.WriteNullBulkStringAsync(writer);
+                break;
+            case 1:
+                await Resp.WriteBulkStringAsync(writer, text[0]);
+                break;
+            default:
+                await Resp.WriteRespArrayAsync(writer, text);
+                break;
+        }
     }
 
     private async Task HandleLRangeAsync(StreamWriter writer, LRange lRange)
