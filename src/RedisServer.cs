@@ -93,7 +93,7 @@ public class RedisServer(int port)
     {
         var text = await _listDb.BlPopAsync(blPop.ListName, blPop.TimeOut == 0 ? null : blPop.TimeOut * 1000);
         if (text == null) await Resp.WriteNullBulkStringAsync(writer);
-        else await Resp.WriteBulkStringAsync(writer, text);
+        else await Resp.WriteRespArrayAsync(writer, [blPop.ListName, text]);
     }
 
 
