@@ -9,22 +9,22 @@ public static class Resp
         message = null;
         consumed = 0;
         var offset = 0;
-    
+
         // Check we have enough data and correct start
         if (buffer.Length < 1 || buffer[offset] != '*') return false;
         offset++;
-    
+
         // Parse array length
-        if (!TryParseInteger(buffer, ref offset, out int arrayLength)) return false;
+        if (!TryParseInteger(buffer, ref offset, out var arrayLength)) return false;
         if (!TrySkipCrlf(buffer, ref offset)) return false;
-    
+
         var items = new List<string>(arrayLength);
-        for (int i = 0; i < arrayLength; i++)
+        for (var i = 0; i < arrayLength; i++)
         {
-            if (!TryParseBulkString(buffer, ref offset, out string? item)) return false;
+            if (!TryParseBulkString(buffer, ref offset, out var item)) return false;
             items.Add(item!);
         }
-    
+
         message = CreateMessage(items);
         consumed = offset;
         return true;
@@ -34,15 +34,15 @@ public static class Resp
     {
         item = null;
         var tempOffset = offset;
-     
+
         // Check we have enough data and correct start
         if (tempOffset >= buffer.Length || buffer[tempOffset] != '$') return false;
         tempOffset++;
-    
+
         // Parse length
-        if (!TryParseInteger(buffer, ref tempOffset, out int length)) return false;
+        if (!TryParseInteger(buffer, ref tempOffset, out var length)) return false;
         if (!TrySkipCrlf(buffer, ref tempOffset)) return false;
-        
+
         // Check for null
         if (length == -1)
         {
@@ -50,14 +50,15 @@ public static class Resp
             offset = tempOffset;
             return true;
         }
+
         // If the length is negative otherwise it is invalid
         if (length < 0) return false;
-    
+
         // Parse string
         if (tempOffset + length > buffer.Length) return false; // Check we have enough bytes
         item = Encoding.UTF8.GetString(buffer.Slice(tempOffset, length));
         tempOffset += length;
-        
+
         // Skip the final crlf
         if (!TrySkipCrlf(buffer, ref tempOffset)) return false;
         offset = tempOffset;
@@ -93,21 +94,21 @@ public static class Resp
             hasDigits = true;
             tempOffset++;
         }
-        
+
         // Edge cases 
         if (tempOffset >= buffer.Length) return false; // No newline
         if (!hasDigits) return false; // No digits (e.g. "-\r\n")
-        
+
         // Return the value
         offset = tempOffset;
         if (isNegative) value = -value;
         return true;
     }
-    
+
     private static RespMessage CreateMessage(List<string> items)
     {
         var command = items[0].ToUpperInvariant(); // just normalize the command
-        
+
         return command switch // We are case insensitive
         {
             "PING" => new Ping(),
@@ -118,7 +119,7 @@ public static class Resp
             "LPUSH" => new LPush(items[1], items[2..]),
             "LRANGE" => new LRange(items[1], int.Parse(items[2]), int.Parse(items[3])),
             "LLEN" => new LLen(items[1]),
-            "LPOP" => new LPop(items[1]),
+            "LPOP" => new LPop(items[1], items.Count > 2 ? int.Parse(items[2]) : 1),
             _ => new Unknown()
         };
     }
@@ -126,13 +127,41 @@ public static class Resp
     private static RespMessage SetMessage(List<string> items)
     {
         if (items.Count < 5) return new Set(items[1], items[2], null);
-        
+
         var modifier = items[3].ToUpperInvariant();
         return modifier switch
         {
             "EX" => new Set(items[1], items[2], DateTime.UtcNow.AddSeconds(int.Parse(items[4]))),
             "PX" => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
-            _    => new Set(items[1], items[2], null)
+            _ => new Set(items[1], items[2], null)
         };
+    }
+
+    // HELPER METHODS FOR WRITING RESPONSES
+
+    public static async Task WriteSimpleStringAsync(StreamWriter writer, string value)
+    {
+        await writer.WriteAsync($"+{value}\r\n");
+    }
+
+    public static async Task WriteBulkStringAsync(StreamWriter writer, string value)
+    {
+        await writer.WriteAsync($"${value.Length}\r\n{value}\r\n");
+    }
+
+    public static async Task WriteNullBulkStringAsync(StreamWriter writer)
+    {
+        await writer.WriteAsync("$-1\r\n");
+    }
+
+    public static async Task WriteIntegerAsync(StreamWriter writer, int value)
+    {
+        await writer.WriteAsync($":{value}\r\n");
+    }
+
+    public static async Task WriteRespArrayAsync(StreamWriter writer, List<string> elements)
+    {
+        await writer.WriteAsync($"*{elements.Count}\r\n");
+        foreach (var element in elements) await WriteBulkStringAsync(writer, element);
     }
 }
