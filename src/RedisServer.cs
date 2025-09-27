@@ -6,11 +6,11 @@ namespace codecrafters_redis;
 public class RedisServer(int port)
 {
     private record DbEntry(string Value, DateTime? Expiry);
-    
+
     private readonly TcpListener _listener = TcpListener.Create(port);
     private readonly ConcurrentDictionary<string, DbEntry> _kvDb = new();
     private readonly ConcurrentDictionary<string, List<string>> _listDb = new();
-    
+
     // BASIC START FUNCTIONS + RELATED HELPERS
 
     public async Task Start()
@@ -20,7 +20,7 @@ public class RedisServer(int port)
         var cancellationTokenSource = new CancellationTokenSource();
         // Run the db cleaner
         _ = Task.Run(() => DbCleanUp(cancellationTokenSource.Token));
-        
+
         while (true)
         {
             var client = await _listener.AcceptTcpClientAsync();
@@ -40,13 +40,10 @@ public class RedisServer(int port)
                 .Select(kvp => kvp.Key)
                 .ToList();
 
-            foreach (var expiredEntry in expiredKeys)
-            {
-                _kvDb.TryRemove(expiredEntry, out _);
-            }
+            foreach (var expiredEntry in expiredKeys) _kvDb.TryRemove(expiredEntry, out _);
         }
     }
-    
+
     // CLIENT HANDLING
 
     private async Task HandleClient(TcpClient client)
@@ -55,14 +52,14 @@ public class RedisServer(int port)
         await using var writer = new StreamWriter(stream);
         var buffer = new byte[4096];
         var bufferLength = 0;
-        
+
         while (true)
         {
             var message = new byte[1024];
             var bytesRead = await stream.ReadAsync(message);
             Array.Copy(message, 0, buffer, bufferLength, bytesRead);
             bufferLength += bytesRead;
-            
+
             // Process messages
             var offset = 0;
             while (offset < bufferLength && Resp.TryParse(buffer.AsSpan(offset, bufferLength - offset), out var respMsg,
@@ -72,7 +69,7 @@ public class RedisServer(int port)
                 await writer.FlushAsync();
                 offset += consumed;
             }
-            
+
             // Move buffer length 
             if (offset == 0) continue;
             Array.Copy(buffer, offset, buffer, 0, bufferLength - offset);
@@ -82,62 +79,80 @@ public class RedisServer(int port)
 
     private async Task HandleRequest(StreamWriter writer, RespMessage? message)
     {
-        switch (message)
+        await (message switch
         {
-            case Ping _:
-                await WriteSimpleString(writer, "PONG");
-                break;
-            case Echo echo:
-                await WriteBulkString(writer, echo.Message);
-                break;
-            case Set set:
-                _kvDb[set.Key] = new DbEntry(set.Value, set.Expiry);
-                await WriteSimpleString(writer, "OK");
-                break;
-            case Get get:
-                // Check if the key exists. If the expiry exists, check to see that we are within its limits
-                if (!_kvDb.TryGetValue(get.Key, out var dbEntry) || dbEntry.Expiry is not null && dbEntry.Expiry < DateTime.UtcNow)
-                {
-                    await WriteNullBulkString(writer);
-                    return;
-                }
-                await WriteBulkString(writer, dbEntry.Value);
-                break;
-            case RPush rPush:
-                if (!_listDb.ContainsKey(rPush.ListName)) _listDb[rPush.ListName] = [];
-                rPush.Elements.ForEach(e => _listDb[rPush.ListName].Add(e));
-                await WriteInteger(writer, _listDb[rPush.ListName].Count);
-                break;
-            case LPush lPush:
-                if (!_listDb.ContainsKey(lPush.ListName)) _listDb[lPush.ListName] = [];
-                lPush.Elements.ForEach(e => _listDb[lPush.ListName].Insert(0, e));
-                await WriteInteger(writer, _listDb[lPush.ListName].Count);
-                break;
-            case LRange lRange:
-                await HandleLRange(writer, lRange);
-                break;
-            case LLen lLen:
-                if (!_listDb.TryGetValue(lLen.ListName, out var list))
-                {
-                    await WriteInteger(writer, 0);
-                    return;
-                }
-                await WriteInteger(writer, list.Count);
-                break;
-            case LPop lPop:
-                if (!_listDb.TryGetValue(lPop.ListName, out var list2) || list2.Count == 0)
-                {
-                    await WriteNullBulkString(writer);
-                    return;
-                }
-                var element = list2[0];
-                list2.RemoveAt(0);
-                await WriteBulkString(writer, element);
-                break;
-        }
+            Ping _ => WriteSimpleString(writer, "PONG"),
+            Echo echo => WriteBulkString(writer, echo.Message),
+            Set set => HandleSet(writer, set),
+            Get get => HandleGet(writer, get),
+            RPush rPush => HandleRPush(writer, rPush),
+            LPush lPush => HandleLPush(writer, lPush),
+            LRange lRange => HandleLRange(writer, lRange),
+            LLen lLen => HandleLLen(writer, lLen),
+            LPop lPop => HandleLPop(writer, lPop),
+            _ => Task.CompletedTask
+        });
     }
 
-    private async Task HandleLRange(StreamWriter writer, LRange lRange) 
+
+    private async Task HandleSet(StreamWriter writer, Set set)
+    {
+        _kvDb[set.Key] = new DbEntry(set.Value, set.Expiry);
+        await WriteSimpleString(writer, "OK");
+    }
+
+    private async Task HandleGet(StreamWriter writer, Get get)
+    {
+        // Check if the key exists. If the expiry exists, check to see that we are within its limits
+        if (!_kvDb.TryGetValue(get.Key, out var dbEntry) ||
+            (dbEntry.Expiry is not null && dbEntry.Expiry < DateTime.UtcNow))
+        {
+            await WriteNullBulkString(writer);
+            return;
+        }
+
+        await WriteBulkString(writer, dbEntry.Value);
+    }
+
+    private async Task HandleRPush(StreamWriter writer, RPush rPush)
+    {
+        if (!_listDb.ContainsKey(rPush.ListName)) _listDb[rPush.ListName] = [];
+        rPush.Elements.ForEach(e => _listDb[rPush.ListName].Add(e));
+        await WriteInteger(writer, _listDb[rPush.ListName].Count);
+    }
+
+    private async Task HandleLPush(StreamWriter writer, LPush lPush)
+    {
+        if (!_listDb.ContainsKey(lPush.ListName)) _listDb[lPush.ListName] = [];
+        lPush.Elements.ForEach(e => _listDb[lPush.ListName].Insert(0, e));
+        await WriteInteger(writer, _listDb[lPush.ListName].Count);
+    }
+
+    private async Task HandleLLen(StreamWriter writer, LLen lLen)
+    {
+        if (!_listDb.TryGetValue(lLen.ListName, out var list))
+        {
+            await WriteInteger(writer, 0);
+            return;
+        }
+
+        await WriteInteger(writer, list.Count);
+    }
+
+    private async Task HandleLPop(StreamWriter writer, LPop lPop)
+    {
+        if (!_listDb.TryGetValue(lPop.ListName, out var list2) || list2.Count == 0)
+        {
+            await WriteNullBulkString(writer);
+            return;
+        }
+
+        var element = list2[0];
+        list2.RemoveAt(0);
+        await WriteBulkString(writer, element);
+    }
+
+    private async Task HandleLRange(StreamWriter writer, LRange lRange)
     {
         if (!_listDb.TryGetValue(lRange.ListName, out var list))
         {
@@ -164,9 +179,9 @@ public class RedisServer(int port)
         var range = list.GetRange(start, end - start + 1);
         await WriteRespArray(writer, range);
     }
-    
+
     // HELPER METHODS FOR WRITING RESPONSES
-    
+
     private static async Task WriteSimpleString(StreamWriter writer, string value)
     {
         await writer.WriteAsync($"+{value}\r\n");
@@ -181,7 +196,7 @@ public class RedisServer(int port)
     {
         await writer.WriteAsync("$-1\r\n");
     }
-    
+
     private static async Task WriteInteger(StreamWriter writer, int value)
     {
         await writer.WriteAsync($":{value}\r\n");
@@ -190,9 +205,6 @@ public class RedisServer(int port)
     private static async Task WriteRespArray(StreamWriter writer, List<string> elements)
     {
         await writer.WriteAsync($"*{elements.Count}\r\n");
-        foreach (var element in elements)
-        {
-            await WriteBulkString(writer, element);
-        }
+        foreach (var element in elements) await WriteBulkString(writer, element);
     }
 }
