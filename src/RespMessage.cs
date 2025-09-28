@@ -20,6 +20,6 @@ public record LLen(string ListName) : RespMessage;
 
 public record LPop(string ListName, int Count) : RespMessage;
 
-public record BlPop(string ListName, int TimeOut) : RespMessage;
+public record BlPop(string ListName, float TimeOutSecs) : RespMessage;
 
 public record Unknown : RespMessage;

@@ -120,7 +120,7 @@ public static class Resp
             "LRANGE" => new LRange(items[1], int.Parse(items[2]), int.Parse(items[3])),
             "LLEN" => new LLen(items[1]),
             "LPOP" => new LPop(items[1], items.Count > 2 ? int.Parse(items[2]) : 1),
-            "BLPOP" => new BlPop(items[1], int.Parse(items[2])),
+            "BLPOP" => new BlPop(items[1], float.Parse(items[2])),
             _ => new Unknown()
         };
     }
