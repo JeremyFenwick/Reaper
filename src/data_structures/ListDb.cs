@@ -11,6 +11,7 @@ public class ListDb
 
     private readonly Dictionary<string, DbEntry> _kvDb = new();
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
+    private int _commandCounter = 0;
 
     private interface ICommand
     {
@@ -69,7 +70,7 @@ public class ListDb
     public Task<string?> BlPopAsync(string key, int? timeOut = null)
     {
         var tcs = new TaskCompletionSource<string?>();
-        var timeOutDate = timeOut == null ? (DateTime?)null : DateTime.UtcNow.AddMilliseconds(timeOut.Value);
+        var timeOutDate = timeOut == null ? (DateTime?)null : DateTime.UtcNow.AddMilliseconds(timeOut.Value * 1000);
         _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
         return tcs.Task;
     }
@@ -88,8 +89,16 @@ public class ListDb
 
     private async Task RunAsync()
     {
-        var blockedOperations = new Dictionary<string, Queue<BlPopCommand>>();
+        var blockedOperations = new Dictionary<string, LinkedList<BlPopCommand>>();
         await foreach (var command in _commandChannel.Reader.ReadAllAsync())
+        {
+            _commandCounter++;
+            if (_commandCounter % 1000 == 0)
+            {
+                CleanupBlockedOps(blockedOperations);
+                _commandCounter = 0;
+            }
+
             switch (command)
             {
                 case AppendCommand append:
@@ -105,28 +114,52 @@ public class ListDb
                     break;
                 }
                 case BlPopCommand blPop when blockedOperations.ContainsKey(blPop.Key):
-                    blockedOperations[blPop.Key].Enqueue(blPop);
+                    blockedOperations[blPop.Key].AddLast(blPop);
                     break;
                 case BlPopCommand blPop when !_kvDb.ContainsKey(blPop.Key) || _kvDb[blPop.Key].Entries.Count == 0:
-                    blockedOperations[blPop.Key] = new Queue<BlPopCommand>();
-                    blockedOperations[blPop.Key].Enqueue(blPop);
+                    blockedOperations[blPop.Key] = [];
+                    blockedOperations[blPop.Key].AddLast(blPop);
                     break;
                 default:
                     command.Execute(_kvDb);
                     break;
             }
+        }
     }
 
-    private void RunBlockingOp(string key, Dictionary<string, Queue<BlPopCommand>> blockedOps)
+    private void RunBlockingOp(string key, Dictionary<string, LinkedList<BlPopCommand>> blockedOps)
     {
-        if (!blockedOps.TryGetValue(key, out var queue)) return;
-        while (queue.Count > 0 && _kvDb.ContainsKey(key) && _kvDb[key].Entries.Count > 0)
+        if (!blockedOps.TryGetValue(key, out var linkedList)) return;
+        while (_kvDb.ContainsKey(key) && _kvDb[key].Entries.Count > 0)
         {
-            var pop = queue.Dequeue();
-            pop.Execute(_kvDb);
+            var pop = linkedList.First;
+            if (pop == null) break;
+            linkedList.RemoveFirst();
+            pop.Value.Execute(_kvDb);
         }
 
-        if (queue.Count == 0) blockedOps.Remove(key);
+        if (linkedList.Count == 0) blockedOps.Remove(key);
+    }
+
+    private static void CleanupBlockedOps(Dictionary<string, LinkedList<BlPopCommand>> blockedOps)
+    {
+        foreach (var (key, list) in blockedOps)
+        {
+            var node = list.First;
+            while (node != null)
+            {
+                var next = node.Next;
+                if (node.Value.TimeOut != null && node.Value.TimeOut < DateTime.UtcNow)
+                {
+                    node.Value.Tcs.SetResult(null);
+                    list.Remove(node);
+                }
+
+                node = next;
+            }
+
+            if (list.Count == 0) blockedOps.Remove(key);
+        }
     }
 
     // COMMANDS
