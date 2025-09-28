@@ -86,8 +86,7 @@ public class ListDb
 
         if (completed == tcs.Task)
             return await tcs.Task; // Result provided by RPUSH/LPUSH
-        else
-            return null; // Timed out
+        return null; // Timed out
     }
 
     public void Dispose()
