@@ -70,10 +70,12 @@ public class ListDb
     public Task<string?> BlPopAsync(string key, int timeOutMs)
     {
         var tcs = new TaskCompletionSource<string?>();
-        var timeOutDate = timeOutMs == 0 ? DateTime.UtcNow : DateTime.UtcNow.AddMilliseconds(timeOutMs);
+        DateTime? timeOutDate = timeOutMs == 0 ? null : DateTime.UtcNow.AddMilliseconds(timeOutMs);
 
         // Set up a timer to complete the TCS with null after timeout
-        if (timeOutMs != 0) _ = Task.Delay(timeOutMs).ContinueWith(_ => tcs.TrySetResult(null));
+        if (timeOutMs != 0)
+            _ = Task.Delay(timeOutMs).ContinueWith(_ =>
+                tcs.TrySetResult(null));
 
         _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
         return tcs.Task;
