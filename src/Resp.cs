@@ -107,7 +107,7 @@ public static class Resp
 
     private static RespMessage CreateMessage(List<string> items)
     {
-        var command = items[0].ToUpperInvariant(); // just normalize the command
+        var command = items[0].ToUpperInvariant(); // normalize the command
 
         return command switch // We are case insensitive
         {
@@ -121,6 +121,7 @@ public static class Resp
             "LLEN" => new LLen(items[1]),
             "LPOP" => new LPop(items[1], items.Count > 2 ? int.Parse(items[2]) : 1),
             "BLPOP" => new BlPop(items[1], float.Parse(items[2])),
+            "TYPE" => new Type(items[1]),
             _ => new Unknown()
         };
     }

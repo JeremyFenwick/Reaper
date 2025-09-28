@@ -22,4 +22,6 @@ public record LPop(string ListName, int Count) : RespMessage;
 
 public record BlPop(string ListName, float TimeOutSecs) : RespMessage;
 
+public record Type(string Key) : RespMessage;
+
 public record Unknown : RespMessage;

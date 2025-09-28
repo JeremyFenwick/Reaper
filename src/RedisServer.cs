@@ -9,6 +9,7 @@ public class RedisServer(int port)
     private readonly TcpListener _listener = TcpListener.Create(port);
     private readonly BasicDb _basicDb = new();
     private readonly ListDb _listDb = new();
+    private readonly ConcurrentDictionary<string, RedisDataType> _keyStore = new();
 
     // BASIC START FUNCTIONS + RELATED HELPERS
 
@@ -85,6 +86,7 @@ public class RedisServer(int port)
             LLen lLen => HandleLLenAsync(writer, lLen),
             LPop lPop => HandleLPopAsync(writer, lPop),
             BlPop blPop => HandleBlPopAsync(writer, blPop),
+            Type type => Resp.WriteSimpleStringAsync(writer, type.Key),
             _ => Task.CompletedTask
         });
     }
@@ -99,7 +101,10 @@ public class RedisServer(int port)
 
     private async Task HandleSetAsync(StreamWriter writer, Set set)
     {
+        if (_keyStore.TryGetValue(set.Key, out var value) && value != RedisDataType.String)
+            throw new Exception("Key is not a string");
         _basicDb.Set(set.Key, set.Value, set.Expiry);
+        _keyStore[set.Key] = RedisDataType.String;
         await Resp.WriteSimpleStringAsync(writer, "OK");
     }
 
@@ -113,13 +118,19 @@ public class RedisServer(int port)
 
     private async Task HandleRPushAsync(StreamWriter writer, RPush rPush)
     {
+        if (_keyStore.TryGetValue(rPush.ListName, out var value) && value != RedisDataType.List)
+            throw new Exception("Key is not a list");
         var entryCount = await _listDb.AppendAsync(rPush.ListName, rPush.Elements);
+        _keyStore[rPush.ListName] = RedisDataType.List;
         await Resp.WriteIntegerAsync(writer, entryCount);
     }
 
     private async Task HandleLPushAsync(StreamWriter writer, LPush lPush)
     {
+        if (_keyStore.TryGetValue(lPush.ListName, out var value) && value != RedisDataType.List)
+            throw new Exception("Key is not a list");
         var entryCount = await _listDb.AppendToFrontAsync(lPush.ListName, lPush.Elements);
+        _keyStore[lPush.ListName] = RedisDataType.List;
         await Resp.WriteIntegerAsync(writer, entryCount);
     }
 
