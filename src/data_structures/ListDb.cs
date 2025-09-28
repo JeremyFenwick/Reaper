@@ -67,26 +67,22 @@ public class ListDb
         return tcs.Task;
     }
 
-    public async Task<string?> BlPopAsync(string key, int timeOutMs)
+    public Task<string?> BlPopAsync(string key, int timeOutMs)
     {
-        var tcs = new TaskCompletionSource<string?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        DateTime? timeOutDate = timeOutMs == 0
-            ? null
-            : DateTime.UtcNow.AddMilliseconds(timeOutMs);
+        var tcs = new TaskCompletionSource<string?>();
+        DateTime? timeOutDate = timeOutMs == 0 ? null : DateTime.UtcNow.AddMilliseconds(timeOutMs);
 
         _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
 
-        if (timeOutMs == 0)
-            return await tcs.Task;
+        // Set up a timer to complete the TCS with null after timeout
+        if (timeOutMs != 0)
+            _ = Task.Delay(timeOutMs).ContinueWith(_ =>
+            {
+                Console.WriteLine($"Timeout triggered for {key}");
+                return tcs.TrySetResult(null);
+            });
 
-        var timeoutTask = Task.Delay(timeOutMs);
-        var completed = await Task.WhenAny(tcs.Task, timeoutTask);
-
-        if (completed == tcs.Task)
-            return await tcs.Task; // Result provided by RPUSH/LPUSH
-        return null; // Timed out
+        return tcs.Task;
     }
 
     public void Dispose()
