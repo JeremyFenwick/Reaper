@@ -70,18 +70,11 @@ public class ListDb
     public Task<string?> BlPopAsync(string key, int timeOutMs)
     {
         var tcs = new TaskCompletionSource<string?>();
-        DateTime? timeOutDate = timeOutMs == 0 ? null : DateTime.UtcNow.AddMilliseconds(timeOutMs);
-        Console.WriteLine($"Created date for {key}: {timeOutDate}");
-        Console.WriteLine($"Timeout: {timeOutMs}");
-        _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
+        var cts = timeOutMs == 0 ? null : new CancellationTokenSource(timeOutMs);
 
-        // Set up a timer to complete the TCS with null after timeout
-        if (timeOutMs != 0)
-            _ = Task.Delay(timeOutMs).ContinueWith(_ =>
-            {
-                Console.WriteLine($"Timeout triggered for {key}");
-                return tcs.TrySetResult(null);
-            });
+        _commandChannel.Writer.TryWrite(new BlPopCommand(key, cts?.Token, tcs));
+
+        cts?.Token.Register(() => tcs.TrySetResult(null));
 
         return tcs.Task;
     }
@@ -160,11 +153,7 @@ public class ListDb
             while (node != null)
             {
                 var next = node.Next;
-                if (node.Value.TimeOut != null && node.Value.TimeOut < DateTime.UtcNow)
-                {
-                    node.Value.Tcs.TrySetResult(null);
-                    list.Remove(node);
-                }
+                if (node.Value.Token != null && node.Value.Token.Value.IsCancellationRequested) list.Remove(node);
 
                 node = next;
             }
@@ -266,17 +255,13 @@ public class ListDb
 
     private record BlPopCommand(
         string Key,
-        DateTime? TimeOut,
+        CancellationToken? Token,
         TaskCompletionSource<string?> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
-            // Check timeout before blocking
-            if (TimeOut != null && TimeOut < DateTime.UtcNow)
-            {
-                Tcs.SetResult(null);
-                return;
-            }
+            // Check if the task is canceled
+            if (Token != null && Token.Value.IsCancellationRequested) Tcs.TrySetResult(null);
 
             // Try to pop from the list
             var entries = db[Key].Entries;
