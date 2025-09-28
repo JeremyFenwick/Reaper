@@ -75,7 +75,10 @@ public class ListDb
         // Set up a timer to complete the TCS with null after timeout
         if (timeOutMs != 0)
             _ = Task.Delay(timeOutMs).ContinueWith(_ =>
-                tcs.TrySetResult(null));
+            {
+                Console.WriteLine($"Timeout triggered for {key}");
+                return tcs.TrySetResult(null);
+            });
 
         _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
         return tcs.Task;
