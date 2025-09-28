@@ -11,7 +11,6 @@ public class ListDb
 
     private readonly Dictionary<string, DbEntry> _kvDb = new();
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
-    private readonly Channel<Message> _blockingOperationsChannel = Channel.CreateUnbounded<Message>();
 
     private interface ICommand
     {
@@ -21,7 +20,6 @@ public class ListDb
     public ListDb()
     {
         _ = Task.Run(RunAsync);
-        _ = Task.Run(RunBlockingOperationsAsync);
     }
 
     // API FUNCTIONS
@@ -36,7 +34,7 @@ public class ListDb
     public Task<int> AppendAsync(string key, List<string> values)
     {
         var tcs = new TaskCompletionSource<int>();
-        _commandChannel.Writer.TryWrite(new AppendCommand(key, values, tcs, _blockingOperationsChannel));
+        _commandChannel.Writer.TryWrite(new AppendCommand(key, values, tcs));
         return tcs.Task;
     }
 
@@ -64,7 +62,7 @@ public class ListDb
     public Task<int> AppendToFrontAsync(string key, List<string> values)
     {
         var tcs = new TaskCompletionSource<int>();
-        _commandChannel.Writer.TryWrite(new AppendToFrontCommand(key, values, tcs, _blockingOperationsChannel));
+        _commandChannel.Writer.TryWrite(new AppendToFrontCommand(key, values, tcs));
         return tcs.Task;
     }
 
@@ -72,39 +70,13 @@ public class ListDb
     {
         var tcs = new TaskCompletionSource<string?>();
         var timeOutDate = timeOut == null ? (DateTime?)null : DateTime.UtcNow.AddMilliseconds(timeOut.Value);
-        _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, _commandChannel, tcs,
-            _blockingOperationsChannel));
+        _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
         return tcs.Task;
     }
 
     public void Dispose()
     {
         _commandChannel.Writer.Complete();
-        _blockingOperationsChannel.Writer.Complete();
-    }
-
-    // BLOCKING OPERATIONS ACTOR
-
-    private async Task RunBlockingOperationsAsync()
-    {
-        var pending = new Dictionary<string, Queue<BlPopCommand>>();
-        await foreach (var msg in _blockingOperationsChannel.Reader.ReadAllAsync())
-            switch (msg)
-            {
-                case BlockingOperation op:
-                {
-                    if (!pending.ContainsKey(op.Cmd.Key)) pending[op.Cmd.Key] = new Queue<BlPopCommand>();
-                    pending[op.Cmd.Key].Enqueue(op.Cmd);
-                    break;
-                }
-                case ListHasItem item:
-                {
-                    if (!pending.TryGetValue(item.Key, out var queue) || queue.Count == 0)
-                        continue;
-                    while (queue.Count > 0) _commandChannel.Writer.TryWrite(queue.Dequeue());
-                    break;
-                }
-            }
     }
 
     // HELPER FUNCTIONS
@@ -114,23 +86,48 @@ public class ListDb
         return new DbEntry(false, []);
     }
 
-    private async Task RunAsync(CancellationToken cancellationToken)
-    {
-        await foreach (var command in _commandChannel.Reader.ReadAllAsync(cancellationToken)) command.Execute(_kvDb);
-    }
-
     private async Task RunAsync()
     {
-        await foreach (var command in _commandChannel.Reader.ReadAllAsync()) command.Execute(_kvDb);
+        var blockedOperations = new Dictionary<string, Queue<BlPopCommand>>();
+        await foreach (var command in _commandChannel.Reader.ReadAllAsync())
+            switch (command)
+            {
+                case AppendCommand append:
+                {
+                    append.Execute(_kvDb);
+                    RunBlockingOp(append.Key, blockedOperations);
+                    break;
+                }
+                case AppendToFrontCommand appendToFront:
+                {
+                    appendToFront.Execute(_kvDb);
+                    RunBlockingOp(appendToFront.Key, blockedOperations);
+                    break;
+                }
+                case BlPopCommand blPop when blockedOperations.ContainsKey(blPop.Key):
+                    blockedOperations[blPop.Key].Enqueue(blPop);
+                    break;
+                case BlPopCommand blPop when !_kvDb.ContainsKey(blPop.Key) || _kvDb[blPop.Key].Entries.Count == 0:
+                    blockedOperations[blPop.Key] = new Queue<BlPopCommand>();
+                    blockedOperations[blPop.Key].Enqueue(blPop);
+                    break;
+                default:
+                    command.Execute(_kvDb);
+                    break;
+            }
     }
 
-    // MESSAGES
+    private void RunBlockingOp(string key, Dictionary<string, Queue<BlPopCommand>> blockedOps)
+    {
+        if (!blockedOps.TryGetValue(key, out var queue)) return;
+        while (queue.Count > 0 && _kvDb.ContainsKey(key) && _kvDb[key].Entries.Count > 0)
+        {
+            var pop = queue.Dequeue();
+            pop.Execute(_kvDb);
+        }
 
-    private abstract record Message;
-
-    private record ListHasItem(string Key, int Count) : Message;
-
-    private record BlockingOperation(BlPopCommand Cmd) : Message;
+        if (queue.Count == 0) blockedOps.Remove(key);
+    }
 
     // COMMANDS
 
@@ -145,15 +142,12 @@ public class ListDb
     private record AppendCommand(
         string Key,
         List<string> Values,
-        TaskCompletionSource<int> Tcs,
-        Channel<Message> BlockingChannel) : ICommand
+        TaskCompletionSource<int> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
             if (!db.ContainsKey(Key)) db[Key] = new DbEntry(true, []);
             db[Key].Entries.AddRange(Values);
-            // Notify blocking operations
-            BlockingChannel.Writer.TryWrite(new ListHasItem(Key, Values.Count));
             Tcs.SetResult(db[Key].Entries.Count);
         }
     }
@@ -216,16 +210,12 @@ public class ListDb
     private record AppendToFrontCommand(
         string Key,
         List<string> Values,
-        TaskCompletionSource<int> Tcs,
-        Channel<Message> BlockingChannel) : ICommand
+        TaskCompletionSource<int> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
             if (!db.ContainsKey(Key)) db[Key] = new DbEntry(true, []);
             Values.ForEach(v => db[Key].Entries.Insert(0, v));
-            // Notify blocking operations
-            BlockingChannel.Writer.TryWrite(new ListHasItem(Key, Values.Count));
-            ;
             Tcs.SetResult(db[Key].Entries.Count);
         }
     }
@@ -233,9 +223,7 @@ public class ListDb
     private record BlPopCommand(
         string Key,
         DateTime? TimeOut,
-        Channel<ICommand> Channel,
-        TaskCompletionSource<string?> Tcs,
-        Channel<Message> BlockingChannel) : ICommand
+        TaskCompletionSource<string?> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
@@ -247,14 +235,7 @@ public class ListDb
             }
 
             // Try to pop from the list
-            if (!db.ContainsKey(Key)) db[Key] = new DbEntry(true, []);
             var entries = db[Key].Entries;
-            if (entries.Count == 0)
-            {
-                // If the list is empty, add ourselves to the blocking operations queue
-                BlockingChannel.Writer.TryWrite(new BlockingOperation(this));
-                return;
-            }
 
             // Actually pop the item when list is not empty
             var result = entries[0];
