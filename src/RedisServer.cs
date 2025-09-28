@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using codecrafters_redis.data_structures;
 
 namespace codecrafters_redis;
@@ -86,9 +87,21 @@ public class RedisServer(int port)
             LLen lLen => HandleLLenAsync(writer, lLen),
             LPop lPop => HandleLPopAsync(writer, lPop),
             BlPop blPop => HandleBlPopAsync(writer, blPop),
-            Type type => Resp.WriteSimpleStringAsync(writer, type.Key),
+            Type type => HandleTypeAsync(writer, type),
             _ => Task.CompletedTask
         });
+    }
+
+    private Task HandleTypeAsync(StreamWriter writer, Type type)
+    {
+        if (!_keyStore.TryGetValue(type.Key, out var value)) return Resp.WriteSimpleStringAsync(writer, "none");
+        return value switch
+        {
+            RedisDataType.String => Resp.WriteSimpleStringAsync(writer, "string"),
+            RedisDataType.List => Resp.WriteSimpleStringAsync(writer, "list"),
+            RedisDataType.Stream => Resp.WriteSimpleStringAsync(writer, "stream"),
+            _ => throw new Exception("Unknown type")
+        };
     }
 
     private async Task HandleBlPopAsync(StreamWriter writer, BlPop blPop)
