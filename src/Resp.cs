@@ -162,7 +162,14 @@ public static class Resp
 
     public static async Task WriteRespArrayAsync(StreamWriter writer, List<string> elements)
     {
-        await writer.WriteAsync($"*{elements.Count}\r\n");
-        foreach (var element in elements) await WriteBulkStringAsync(writer, element);
+        if (elements.Count == 0)
+        {
+            await writer.WriteAsync("*-1\r\n");
+        }
+        else
+        {
+            await writer.WriteAsync($"*{elements.Count}\r\n");
+            foreach (var element in elements) await WriteBulkStringAsync(writer, element);
+        }
     }
 }
