@@ -91,7 +91,7 @@ public class RedisServer(int port)
 
     private async Task HandleBlPopAsync(StreamWriter writer, BlPop blPop)
     {
-        var blPopTask = _listDb.BlPopAsync(blPop.ListName, null); // No timeout to ListDb
+        var blPopTask = _listDb.BlPopAsync(blPop.ListName, blPop.TimeOut); // No timeout to ListDb
         if (blPop.TimeOut == 0)
         {
             // Block indefinitely
