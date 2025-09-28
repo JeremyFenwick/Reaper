@@ -71,6 +71,7 @@ public class ListDb
     {
         var tcs = new TaskCompletionSource<string?>();
         DateTime? timeOutDate = timeOutMs == 0 ? null : DateTime.UtcNow.AddMilliseconds(timeOutMs);
+        Console.WriteLine($"Created date for {key}: {timeOutDate}");
 
         _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
 
