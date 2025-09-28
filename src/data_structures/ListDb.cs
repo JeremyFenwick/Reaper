@@ -160,7 +160,7 @@ public class ListDb
                 var next = node.Next;
                 if (node.Value.TimeOut != null && node.Value.TimeOut < DateTime.UtcNow)
                 {
-                    node.Value.Tcs.SetResult(null);
+                    node.Value.Tcs.TrySetResult(null);
                     list.Remove(node);
                 }
 
@@ -282,7 +282,7 @@ public class ListDb
             // Actually pop the item when list is not empty
             var result = entries[0];
             entries.RemoveAt(0);
-            Tcs.SetResult(result);
+            Tcs.TrySetResult(result);
         }
     }
 }
