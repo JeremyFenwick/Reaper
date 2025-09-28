@@ -72,6 +72,8 @@ public class ListDb
         var tcs = new TaskCompletionSource<string?>();
         DateTime? timeOutDate = timeOutMs == 0 ? null : DateTime.UtcNow.AddMilliseconds(timeOutMs);
 
+        _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
+
         // Set up a timer to complete the TCS with null after timeout
         if (timeOutMs != 0)
             _ = Task.Delay(timeOutMs).ContinueWith(_ =>
@@ -80,7 +82,6 @@ public class ListDb
                 return tcs.TrySetResult(null);
             });
 
-        _commandChannel.Writer.TryWrite(new BlPopCommand(key, timeOutDate, tcs));
         return tcs.Task;
     }
 
