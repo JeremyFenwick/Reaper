@@ -96,7 +96,8 @@ public class RedisServer(int port)
         {
             // Block indefinitely
             var text = await blPopTask;
-            // handle response...
+            if (text == null) await Resp.WriteNullBulkStringAsync(writer);
+            else await Resp.WriteRespArrayAsync(writer, [blPop.ListName, text]);
         }
         else
         {
