@@ -147,19 +147,22 @@ public class ListDb
 
     private static void CleanupBlockedOps(Dictionary<string, LinkedList<BlPopCommand>> blockedOps)
     {
+        var keysToRemove = new List<string>();
         foreach (var (key, list) in blockedOps)
         {
             var node = list.First;
             while (node != null)
             {
                 var next = node.Next;
-                if (node.Value.Token != null && node.Value.Token.Value.IsCancellationRequested) list.Remove(node);
+                if (node.Value.Token is { IsCancellationRequested: true }) list.Remove(node);
 
                 node = next;
             }
 
-            if (list.Count == 0) blockedOps.Remove(key);
+            if (list.Count == 0) keysToRemove.Add(key);
         }
+
+        foreach (var key in keysToRemove) blockedOps.Remove(key);
     }
 
     // COMMANDS
@@ -261,7 +264,11 @@ public class ListDb
         public void Execute(Dictionary<string, DbEntry> db)
         {
             // Check if the task is canceled
-            if (Token != null && Token.Value.IsCancellationRequested) Tcs.TrySetResult(null);
+            if (Token is { IsCancellationRequested: true })
+            {
+                Tcs.TrySetResult(null);
+                return;
+            }
 
             // Try to pop from the list
             var entries = db[Key].Entries;
