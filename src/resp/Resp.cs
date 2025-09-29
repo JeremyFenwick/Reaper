@@ -162,7 +162,7 @@ public static class Resp
         // Get the timestamp
         long? ts = id[0] == "*" ? null : long.Parse(id[0]);
         // Get the sequence
-        int? seq = id.Length == 0 || id[1] == "*" ? null : int.Parse(id[1]);
+        int? seq = id.Length == 1 || id[1] == "*" ? null : int.Parse(id[1]);
 
         return new XAdd(key, ts, seq, fields);
     }
