@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using codecrafters_redis.resp;
 
 namespace codecrafters_redis.data_structures;
 
@@ -8,7 +9,7 @@ public class StreamDb
 
     private record DbEntry(List<StreamEntry> Entries);
 
-    private record StreamEntry(string Id, List<KeyValuePair<string, string>> Fields);
+    private record StreamEntry(string Id, long Timestamp, int Sequence, List<KeyValuePair<string, string>> Fields);
 
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
     private readonly Dictionary<string, DbEntry> _kvDb = new();
@@ -23,10 +24,10 @@ public class StreamDb
         _ = Task.Run(RunAsync);
     }
 
-    public Task<Result> AddAsync(string key, string? id, List<KeyValuePair<string, string>> fields)
+    public Task<Result> AddAsync(XAdd xAdd)
     {
         var tcs = new TaskCompletionSource<Result>();
-        _commandChannel.Writer.TryWrite(new XAddCommand(key, id ?? Guid.NewGuid().ToString(), fields, tcs));
+        _commandChannel.Writer.TryWrite(new XAddCommand(xAdd.Key, xAdd.TimeStamp, xAdd.Sequence, xAdd.Pairs, tcs));
         return tcs.Task;
     }
 
@@ -41,14 +42,15 @@ public class StreamDb
 
     private record XAddCommand(
         string Key,
-        string Id,
+        long? Timestamp,
+        int? Sequence,
         List<KeyValuePair<string, string>> Pairs,
         TaskCompletionSource<Result> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
             // Check if the ID is valid
-            if (!ValidId(Id))
+            if (Timestamp == 0 && Sequence == 0)
             {
                 Tcs.SetResult(new Result(true, "The ID specified in XADD must be greater than 0-0"));
                 return;
@@ -56,37 +58,35 @@ public class StreamDb
 
             if (!db.ContainsKey(Key)) db[Key] = new DbEntry([]);
             var entries = db[Key].Entries;
-            if (entries.Count > 0)
+            // We may not have a prior entry to compare to
+            var last = entries.Count > 0 ? entries[^1] : null;
+            var (valid, newTs, newSeq) = GenerateId(Timestamp, Sequence, last?.Timestamp, last?.Sequence);
+            if (!valid)
             {
-                var last = entries[^1];
-                if (!ValidId(last.Id, Id))
-                {
-                    Tcs.SetResult(new Result(true,
-                        "The ID specified in XADD is equal or smaller than the target stream top item"));
-                    return;
-                }
+                Tcs.SetResult(new Result(true,
+                    "The ID specified in XADD is equal or smaller than the target stream top item"));
+                return;
             }
 
-            entries.Add(new StreamEntry(Id, Pairs));
-            Tcs.SetResult(new Result(false, Id));
+            entries.Add(new StreamEntry($"{newTs}-{newSeq}", newTs, newSeq, Pairs));
+            Tcs.SetResult(new Result(false, $"{newTs}-{newSeq}"));
         }
     }
 
-    private static bool ValidId(string id)
+    private static (bool valid, long Timestamp, int Sequence) GenerateId(long? timestamp, int? sequence,
+        long? lastTimestamp,
+        int? lastSequence)
     {
-        return id != "0-0";
-    }
-
-    private static bool ValidId(string lastId, string newId)
-    {
-        var (lastTimestamp, lastSequence) = ParseId(lastId);
-        var (newTimestamp, newSequence) = ParseId(newId);
-        if (newTimestamp < lastTimestamp) return false;
-        return newTimestamp != lastTimestamp || newSequence > lastSequence;
-    }
-
-    private static (long timestamp, int sequence) ParseId(string id)
-    {
-        return id.Split('-') is var parts ? (long.Parse(parts[0]), int.Parse(parts[1])) : (0L, 0);
+        // Check if the ID is valid
+        if (timestamp < lastTimestamp || (timestamp == lastTimestamp && sequence < lastSequence))
+            return (false, 0, 0);
+        // Generate the values if requested
+        timestamp ??= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        sequence ??= 0;
+        // If we have no id to compare to we just return
+        if (lastTimestamp == null || lastSequence == null) return (true, timestamp.Value, sequence.Value);
+        // If we have an existing id check to see if we need to set the sequence
+        if (timestamp == lastTimestamp) sequence = lastSequence + 1;
+        return (true, timestamp.Value, sequence.Value);
     }
 }

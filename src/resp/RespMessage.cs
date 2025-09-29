@@ -24,6 +24,6 @@ public record BlPop(string ListName, float TimeOutSecs) : RespMessage;
 
 public record Type(string Key) : RespMessage;
 
-public record XAdd(string Key, string? Id, List<KeyValuePair<string, string>> Pairs) : RespMessage;
+public record XAdd(string Key, long? TimeStamp, int? Sequence, List<KeyValuePair<string, string>> Pairs) : RespMessage;
 
 public record Unknown : RespMessage;

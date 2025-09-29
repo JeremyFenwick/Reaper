@@ -146,7 +146,7 @@ public static class Resp
             throw new ArgumentException("XADD requires at least a key, an ID, and one field/value pair.");
 
         var key = items[1];
-        var id = items[2];
+        var id = items[2].Split("-");
 
         // Use a list so duplicate fields are preserved (Redis allows this)
         var fields = new List<KeyValuePair<string, string>>();
@@ -159,7 +159,12 @@ public static class Resp
             fields.Add(new KeyValuePair<string, string>(items[i], items[i + 1]));
         }
 
-        return new XAdd(key, id, fields);
+        // Get the timestamp
+        long? ts = id[0] == "*" ? null : long.Parse(id[0]);
+        // Get the sequence
+        int? seq = id[1] == "*" ? null : int.Parse(id[1]);
+
+        return new XAdd(key, ts, seq, fields);
     }
 
     // HELPER METHODS FOR WRITING RESPONSES
