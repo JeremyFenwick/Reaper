@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace codecrafters_redis;
+namespace codecrafters_redis.resp;
 
 public static class Resp
 {
@@ -122,6 +122,7 @@ public static class Resp
             "LPOP" => new LPop(items[1], items.Count > 2 ? int.Parse(items[2]) : 1),
             "BLPOP" => new BlPop(items[1], float.Parse(items[2])),
             "TYPE" => new Type(items[1]),
+            "XADD" => GenerateXAdd(items),
             _ => new Unknown()
         };
     }
@@ -137,6 +138,28 @@ public static class Resp
             "PX" => new Set(items[1], items[2], DateTime.UtcNow.AddMilliseconds(int.Parse(items[4]))),
             _ => new Set(items[1], items[2], null)
         };
+    }
+
+    private static RespMessage GenerateXAdd(List<string> items)
+    {
+        if (items.Count < 4)
+            throw new ArgumentException("XADD requires at least a key, an ID, and one field/value pair.");
+
+        var key = items[1];
+        var id = items[2];
+
+        // Use a list so duplicate fields are preserved (Redis allows this)
+        var fields = new List<KeyValuePair<string, string>>();
+
+        for (var i = 3; i < items.Count; i += 2)
+        {
+            if (i + 1 >= items.Count)
+                throw new ArgumentException("XADD fields must be specified as field/value pairs.");
+
+            fields.Add(new KeyValuePair<string, string>(items[i], items[i + 1]));
+        }
+
+        return new XAdd(key, id, fields);
     }
 
     // HELPER METHODS FOR WRITING RESPONSES

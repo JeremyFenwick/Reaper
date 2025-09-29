@@ -1,4 +1,4 @@
-namespace codecrafters_redis;
+namespace codecrafters_redis.resp;
 
 public abstract record RespMessage;
 
@@ -23,5 +23,7 @@ public record LPop(string ListName, int Count) : RespMessage;
 public record BlPop(string ListName, float TimeOutSecs) : RespMessage;
 
 public record Type(string Key) : RespMessage;
+
+public record XAdd(string Key, string? Id, List<KeyValuePair<string, string>> Pairs) : RespMessage;
 
 public record Unknown : RespMessage;

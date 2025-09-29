@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using codecrafters_redis.data_structures;
+using codecrafters_redis.resp;
+using Type = codecrafters_redis.resp.Type;
 
 namespace codecrafters_redis;
 
@@ -11,6 +13,7 @@ public class RedisServer(int port)
     private readonly BasicDb _basicDb = new();
     private readonly ListDb _listDb = new();
     private readonly ConcurrentDictionary<string, RedisDataType> _keyStore = new();
+    private readonly StreamDb _streamDb = new();
 
     // BASIC START FUNCTIONS + RELATED HELPERS
 
@@ -88,8 +91,16 @@ public class RedisServer(int port)
             LPop lPop => HandleLPopAsync(writer, lPop),
             BlPop blPop => HandleBlPopAsync(writer, blPop),
             Type type => HandleTypeAsync(writer, type),
+            XAdd xAdd => HandleXAddAsync(writer, xAdd),
             _ => Task.CompletedTask
         });
+    }
+
+    private async Task HandleXAddAsync(StreamWriter writer, XAdd xAdd)
+    {
+        var id = await _streamDb.AddAsync(xAdd.Key, xAdd.Id, xAdd.Pairs);
+        _keyStore[xAdd.Key] = RedisDataType.Stream;
+        await Resp.WriteBulkStringAsync(writer, id);
     }
 
     private Task HandleTypeAsync(StreamWriter writer, Type type)
