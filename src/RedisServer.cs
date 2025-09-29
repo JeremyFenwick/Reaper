@@ -98,7 +98,6 @@ public class RedisServer(int port)
 
     private async Task HandleXAddAsync(StreamWriter writer, XAdd xAdd)
     {
-        Console.WriteLine(xAdd);
         var result = await _streamDb.AddAsync(xAdd);
         _keyStore[xAdd.Key] = RedisDataType.Stream;
         if (result.Error) await Resp.WriteSimpleErrorAsync(writer, result.Message);
