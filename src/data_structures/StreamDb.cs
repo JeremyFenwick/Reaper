@@ -85,7 +85,7 @@ public class StreamDb
         sequence ??= 0;
         // If the timestamp is 0 the sequence must be greater than 0
         if (timestamp == 0 && sequence == 0) sequence = 1;
-        // If we have no id to compare to we just return
+        // If we have no id to compare we just return
         if (lastTimestamp == null || lastSequence == null) return (true, timestamp.Value, sequence.Value);
         // If we have an existing id check to see if we need to set the sequence
         if (timestamp == lastTimestamp) sequence = lastSequence + 1;
