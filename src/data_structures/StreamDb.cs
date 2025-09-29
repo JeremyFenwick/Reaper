@@ -78,7 +78,7 @@ public class StreamDb
         int? lastSequence)
     {
         // Check if the ID is valid
-        if (timestamp < lastTimestamp || (timestamp == lastTimestamp && sequence < lastSequence))
+        if (timestamp < lastTimestamp || (timestamp == lastTimestamp && sequence <= lastSequence))
             return (false, 0, 0);
         // Generate the values if requested
         timestamp ??= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
