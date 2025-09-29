@@ -4,9 +4,11 @@ namespace codecrafters_redis.data_structures;
 
 public class StreamDb
 {
-    public record DbEntry(bool Exists, List<StreamEntry> Entries);
+    public record Result(bool Error, string Message);
 
-    public record StreamEntry(string Id, List<KeyValuePair<string, string>> Fields);
+    private record DbEntry(List<StreamEntry> Entries);
+
+    private record StreamEntry(string Id, List<KeyValuePair<string, string>> Fields);
 
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
     private readonly Dictionary<string, DbEntry> _kvDb = new();
@@ -21,9 +23,9 @@ public class StreamDb
         _ = Task.Run(RunAsync);
     }
 
-    public Task<string> AddAsync(string key, string? id, List<KeyValuePair<string, string>> fields)
+    public Task<Result> AddAsync(string key, string? id, List<KeyValuePair<string, string>> fields)
     {
-        var tcs = new TaskCompletionSource<string>();
+        var tcs = new TaskCompletionSource<Result>();
         _commandChannel.Writer.TryWrite(new XAddCommand(key, id ?? Guid.NewGuid().ToString(), fields, tcs));
         return tcs.Task;
     }
@@ -41,13 +43,37 @@ public class StreamDb
         string Key,
         string Id,
         List<KeyValuePair<string, string>> Pairs,
-        TaskCompletionSource<string> Tcs) : ICommand
+        TaskCompletionSource<Result> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
-            if (!db.ContainsKey(Key)) db[Key] = new DbEntry(true, []);
-            db[Key].Entries.Add(new StreamEntry(Id, Pairs));
-            Tcs.SetResult(Id);
+            if (!db.ContainsKey(Key)) db[Key] = new DbEntry([]);
+            var entries = db[Key].Entries;
+            if (entries.Count > 0)
+            {
+                var last = entries[^1];
+                if (!ValidId(last.Id, Id))
+                {
+                    Tcs.SetResult(new Result(true, Id));
+                    return;
+                }
+            }
+
+            entries.Add(new StreamEntry(Id, Pairs));
+            Tcs.SetResult(new Result(false, Id));
         }
+    }
+
+    private static bool ValidId(string lastId, string newId)
+    {
+        var (lastTimestamp, lastSequence) = ParseId(lastId);
+        var (newTimestamp, newSequence) = ParseId(newId);
+        if (newTimestamp < lastTimestamp) return false;
+        return newTimestamp != lastTimestamp || newSequence > lastSequence;
+    }
+
+    private static (long timestamp, int sequence) ParseId(string id)
+    {
+        return id.Split('-') is var parts ? (long.Parse(parts[0]), int.Parse(parts[1])) : (0L, 0);
     }
 }

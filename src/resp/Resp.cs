@@ -194,4 +194,9 @@ public static class Resp
     {
         await writer.WriteAsync($"*-1\r\n");
     }
+
+    public static async Task WriteSimpleErrorAsync(StreamWriter writer, string message)
+    {
+        await writer.WriteAsync($"-ERR {message}\r\n");
+    }
 }
