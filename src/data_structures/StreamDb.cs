@@ -47,6 +47,13 @@ public class StreamDb
     {
         public void Execute(Dictionary<string, DbEntry> db)
         {
+            // Check if the ID is valid
+            if (!ValidId(Id))
+            {
+                Tcs.SetResult(new Result(true, "The ID specified in XADD must be greater than 0-0"));
+                return;
+            }
+
             if (!db.ContainsKey(Key)) db[Key] = new DbEntry([]);
             var entries = db[Key].Entries;
             if (entries.Count > 0)
@@ -63,6 +70,11 @@ public class StreamDb
             entries.Add(new StreamEntry(Id, Pairs));
             Tcs.SetResult(new Result(false, Id));
         }
+    }
+
+    private static bool ValidId(string id)
+    {
+        return id != "0-0";
     }
 
     private static bool ValidId(string lastId, string newId)
