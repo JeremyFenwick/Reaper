@@ -54,7 +54,8 @@ public class StreamDb
                 var last = entries[^1];
                 if (!ValidId(last.Id, Id))
                 {
-                    Tcs.SetResult(new Result(true, Id));
+                    Tcs.SetResult(new Result(true,
+                        "The ID specified in XADD is equal or smaller than the target stream top item"));
                     return;
                 }
             }
