@@ -132,11 +132,38 @@ public static class Resp
     private static XRange GenerateXRange(List<string> items)
     {
         var key = items[1];
-        var start = items[2].Split("-");
-        var end = items[3].Split("-");
-        int? startSeq = start.Length == 1 ? null : int.Parse(start[1]);
-        int? endSeq = end.Length == 1 ? null : int.Parse(end[1]);
-        return new XRange(key, long.Parse(start[0]), startSeq, long.Parse(end[0]), endSeq);
+
+        // Start
+        long startTs;
+        int? startSeq = null;
+        if (items[2] == "-")
+        {
+            startTs = long.MinValue; // Represents "from the beginning"
+        }
+        else
+        {
+            var startParts = items[2].Split('-');
+            startTs = long.Parse(startParts[0]);
+            if (startParts.Length > 1)
+                startSeq = int.Parse(startParts[1]);
+        }
+
+        // End
+        long endTs;
+        int? endSeq = null;
+        if (items[3] == "+")
+        {
+            endTs = long.MaxValue; // Represents "to the end"
+        }
+        else
+        {
+            var endParts = items[3].Split('-');
+            endTs = long.Parse(endParts[0]);
+            if (endParts.Length > 1)
+                endSeq = int.Parse(endParts[1]);
+        }
+
+        return new XRange(key, startTs, startSeq, endTs, endSeq);
     }
 
     private static Set SetMessage(List<string> items)
