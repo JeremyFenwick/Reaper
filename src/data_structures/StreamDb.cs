@@ -7,9 +7,9 @@ public class StreamDb
 {
     public record Result(bool Error, string Message);
 
-    private record DbEntry(List<StreamEntry> Entries);
+    public record StreamEntry(string Id, long Timestamp, int Sequence, List<KeyValuePair<string, string>> Fields);
 
-    private record StreamEntry(string Id, long Timestamp, int Sequence, List<KeyValuePair<string, string>> Fields);
+    private record DbEntry(List<StreamEntry> Entries);
 
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
     private readonly Dictionary<string, DbEntry> _kvDb = new();
@@ -31,6 +31,14 @@ public class StreamDb
         return tcs.Task;
     }
 
+    public Task<List<StreamEntry>> RangeAsync(XRange xRange)
+    {
+        var tcs = new TaskCompletionSource<List<StreamEntry>>();
+        _commandChannel.Writer.TryWrite(new XRangeCommand(xRange.Key, xRange.Start, xRange.StartSequence, xRange.End,
+            xRange.EndSequence, tcs));
+        return tcs.Task;
+    }
+
     // HELPER FUNCTIONS
 
     private async Task RunAsync()
@@ -39,6 +47,43 @@ public class StreamDb
     }
 
     // COMMANDS
+
+    private record XRangeCommand(
+        string Key,
+        long Start,
+        int? StartSequence,
+        long End,
+        int? EndSequence,
+        TaskCompletionSource<List<StreamEntry>> Tcs) : ICommand
+    {
+        public void Execute(Dictionary<string, DbEntry> db)
+        {
+            var result = new List<StreamEntry>();
+            if (!db.TryGetValue(Key, out var entry))
+            {
+                Tcs.SetResult(result);
+                return;
+            }
+
+            var startSeq = StartSequence ?? 0;
+            var endSeq = EndSequence ?? long.MaxValue;
+
+            foreach (var streamEntry in entry.Entries)
+            {
+                if (streamEntry.Timestamp < Start ||
+                    (streamEntry.Timestamp == Start && streamEntry.Sequence < startSeq))
+                    continue;
+
+                if (streamEntry.Timestamp > End ||
+                    (streamEntry.Timestamp == End && streamEntry.Sequence > endSeq))
+                    continue;
+
+                result.Add(streamEntry);
+            }
+
+            Tcs.SetResult(result);
+        }
+    }
 
     private record XAddCommand(
         string Key,

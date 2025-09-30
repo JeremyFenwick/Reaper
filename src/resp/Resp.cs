@@ -1,4 +1,5 @@
 using System.Text;
+using codecrafters_redis.data_structures;
 
 namespace codecrafters_redis.resp;
 
@@ -123,11 +124,22 @@ public static class Resp
             "BLPOP" => new BlPop(items[1], float.Parse(items[2])),
             "TYPE" => new Type(items[1]),
             "XADD" => GenerateXAdd(items),
+            "XRANGE" => GenerateXRange(items),
             _ => new Unknown()
         };
     }
 
-    private static RespMessage SetMessage(List<string> items)
+    private static XRange GenerateXRange(List<string> items)
+    {
+        var key = items[1];
+        var start = items[2].Split("-");
+        var end = items[3].Split("-");
+        int? startSeq = start.Length == 1 ? null : int.Parse(start[1]);
+        int? endSeq = end.Length == 1 ? null : int.Parse(end[1]);
+        return new XRange(key, long.Parse(start[0]), startSeq, long.Parse(end[0]), endSeq);
+    }
+
+    private static Set SetMessage(List<string> items)
     {
         if (items.Count < 5) return new Set(items[1], items[2], null);
 
@@ -140,7 +152,7 @@ public static class Resp
         };
     }
 
-    private static RespMessage GenerateXAdd(List<string> items)
+    private static XAdd GenerateXAdd(List<string> items)
     {
         if (items.Count < 4)
             throw new ArgumentException("XADD requires at least a key, an ID, and one field/value pair.");
@@ -193,6 +205,36 @@ public static class Resp
     {
         await writer.WriteAsync($"*{elements.Count}\r\n");
         foreach (var element in elements) await WriteBulkStringAsync(writer, element);
+    }
+
+    public static async Task WriteRespArrayOfStreamEntriesAsync(StreamWriter writer, List<StreamDb.StreamEntry> entries)
+    {
+        if (entries.Count == 0)
+        {
+            await writer.WriteAsync("*0\r\n"); // empty array
+            return;
+        }
+
+        await writer.WriteAsync($"*{entries.Count}\r\n");
+
+        foreach (var entry in entries)
+        {
+            // Outer array: ID + array of fields
+            await writer.WriteAsync("*2\r\n");
+
+            // Entry ID
+            await WriteBulkStringAsync(writer, entry.Id);
+
+            // Inner array: key-value pairs in order
+            var flatFields = new List<string>();
+            foreach (var kv in entry.Fields)
+            {
+                flatFields.Add(kv.Key);
+                flatFields.Add(kv.Value);
+            }
+
+            await WriteRespArrayAsync(writer, flatFields);
+        }
     }
 
     public static async Task WriteNullArrayAsync(StreamWriter writer)

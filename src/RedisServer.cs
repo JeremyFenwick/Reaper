@@ -92,8 +92,15 @@ public class RedisServer(int port)
             BlPop blPop => HandleBlPopAsync(writer, blPop),
             Type type => HandleTypeAsync(writer, type),
             XAdd xAdd => HandleXAddAsync(writer, xAdd),
+            XRange xRange => HandleXRangeAsync(writer, xRange),
             _ => Task.CompletedTask
         });
+    }
+
+    private async Task HandleXRangeAsync(StreamWriter writer, XRange xRange)
+    {
+        var streamEntries = await _streamDb.RangeAsync(xRange);
+        await Resp.WriteRespArrayOfStreamEntriesAsync(writer, streamEntries);
     }
 
     private async Task HandleXAddAsync(StreamWriter writer, XAdd xAdd)

@@ -26,4 +26,6 @@ public record Type(string Key) : RespMessage;
 
 public record XAdd(string Key, long? TimeStamp, int? Sequence, List<KeyValuePair<string, string>> Pairs) : RespMessage;
 
+public record XRange(string Key, long Start, int? StartSequence, long End, int? EndSequence) : RespMessage;
+
 public record Unknown : RespMessage;
