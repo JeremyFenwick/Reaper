@@ -9,20 +9,22 @@ public class StreamDb
 
     public record StreamEntry(string Id, long Timestamp, int Sequence, List<KeyValuePair<string, string>> Fields);
 
-    private record DbEntry(List<StreamEntry> Entries);
+    private record DbStream(List<StreamEntry> Entries);
 
     private readonly Channel<ICommand> _commandChannel = Channel.CreateUnbounded<ICommand>();
-    private readonly Dictionary<string, DbEntry> _kvDb = new();
+    private readonly Dictionary<string, DbStream> _kvDb = new();
 
     private interface ICommand
     {
-        void Execute(Dictionary<string, DbEntry> db);
+        void Execute(Dictionary<string, DbStream> db);
     }
 
     public StreamDb()
     {
         _ = Task.Run(RunAsync);
     }
+
+    // API FUNCTIONS
 
     public Task<Result> AddAsync(XAdd xAdd)
     {
@@ -36,6 +38,13 @@ public class StreamDb
         var tcs = new TaskCompletionSource<List<StreamEntry>>();
         _commandChannel.Writer.TryWrite(new XRangeCommand(xRange.Key, xRange.Start, xRange.StartSequence, xRange.End,
             xRange.EndSequence, tcs));
+        return tcs.Task;
+    }
+
+    public Task<List<StreamEntry>> ReadAsync(XRead xRead)
+    {
+        var tcs = new TaskCompletionSource<List<StreamEntry>>();
+        _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, tcs));
         return tcs.Task;
     }
 
@@ -56,7 +65,7 @@ public class StreamDb
         int? EndSequence,
         TaskCompletionSource<List<StreamEntry>> Tcs) : ICommand
     {
-        public void Execute(Dictionary<string, DbEntry> db)
+        public void Execute(Dictionary<string, DbStream> db)
         {
             var result = new List<StreamEntry>();
             if (!db.TryGetValue(Key, out var entry))
@@ -85,6 +94,27 @@ public class StreamDb
         }
     }
 
+    private record XReadCommand(
+        List<StreamReadRequest> Requests,
+        TaskCompletionSource<List<StreamEntry>> Tcs) : ICommand
+    {
+        public void Execute(Dictionary<string, DbStream> db)
+        {
+            var result = new List<StreamEntry>();
+            foreach (var request in Requests)
+            {
+                if (!db.TryGetValue(request.Key, out var stream)) continue;
+                stream.Entries
+                    .Where(e => e.Timestamp >= request.Start &&
+                                (request.Sequence == null || e.Sequence >= request.Sequence))
+                    .ToList()
+                    .ForEach(e => result.Add(e));
+            }
+
+            Tcs.SetResult(result);
+        }
+    }
+
     private record XAddCommand(
         string Key,
         long? Timestamp,
@@ -92,7 +122,7 @@ public class StreamDb
         List<KeyValuePair<string, string>> Pairs,
         TaskCompletionSource<Result> Tcs) : ICommand
     {
-        public void Execute(Dictionary<string, DbEntry> db)
+        public void Execute(Dictionary<string, DbStream> db)
         {
             // Check if the ID is valid
             if (Timestamp == 0 && Sequence == 0)
@@ -101,7 +131,7 @@ public class StreamDb
                 return;
             }
 
-            if (!db.ContainsKey(Key)) db[Key] = new DbEntry([]);
+            if (!db.ContainsKey(Key)) db[Key] = new DbStream([]);
             var entries = db[Key].Entries;
             // We may not have a prior entry to compare to
             var last = entries.Count > 0 ? entries[^1] : null;

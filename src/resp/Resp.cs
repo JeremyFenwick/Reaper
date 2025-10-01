@@ -125,8 +125,27 @@ public static class Resp
             "TYPE" => new Type(items[1]),
             "XADD" => GenerateXAdd(items),
             "XRANGE" => GenerateXRange(items),
+            "XREAD" => GenerateXRead(items),
             _ => new Unknown()
         };
+    }
+
+    private static XRead GenerateXRead(List<string> items)
+    {
+        var requests = new List<StreamReadRequest>();
+        for (var i = 2; i < items.Count; i += 2)
+        {
+            if (i + 1 >= items.Count)
+                throw new ArgumentException("XREAD missing ID for key");
+
+            var key = items[i];
+            var id = items[i + 1];
+            var splitId = id.Split("-");
+            int? seq = splitId.Length == 1 ? null : int.Parse(splitId[1]);
+            requests.Add(new StreamReadRequest(key, long.Parse(splitId[0]), seq));
+        }
+
+        return new XRead(requests);
     }
 
     private static XRange GenerateXRange(List<string> items)

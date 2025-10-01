@@ -29,3 +29,9 @@ public record XAdd(string Key, long? TimeStamp, int? Sequence, List<KeyValuePair
 public record XRange(string Key, long Start, int? StartSequence, long End, int? EndSequence) : RespMessage;
 
 public record Unknown : RespMessage;
+
+// XREAD + HELPER RECORD
+
+public record XRead(List<StreamReadRequest> Requests) : RespMessage;
+
+public record StreamReadRequest(string Key, long Start, int? Sequence);
