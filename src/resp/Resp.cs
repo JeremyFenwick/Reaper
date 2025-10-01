@@ -130,8 +130,6 @@ public static class Resp
         };
     }
 
-    rivate
-
     private static XRead GenerateXRead(List<string> items)
     {
         // Find where "streams" keyword is
