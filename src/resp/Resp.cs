@@ -130,16 +130,35 @@ public static class Resp
         };
     }
 
+    rivate
+
     private static XRead GenerateXRead(List<string> items)
     {
-        var requests = new List<StreamReadRequest>();
-        for (var i = 2; i < items.Count; i += 2)
-        {
-            if (i + 1 >= items.Count)
-                throw new ArgumentException("XREAD missing ID for key");
+        // Find where "streams" keyword is
+        var streamsIndex = -1;
+        for (var i = 1; i < items.Count; i++)
+            if (items[i].Equals("streams", StringComparison.OrdinalIgnoreCase))
+            {
+                streamsIndex = i;
+                break;
+            }
 
-            var key = items[i];
-            var id = items[i + 1];
+        if (streamsIndex == -1)
+            throw new ArgumentException("XREAD requires 'streams' keyword");
+
+        // After "streams", we have: key1 key2 ... keyN id1 id2 ... idN
+        var remainingItems = items.Count - streamsIndex - 1;
+        if (remainingItems % 2 != 0)
+            throw new ArgumentException("XREAD requires equal number of keys and IDs");
+
+        var numStreams = remainingItems / 2;
+        var requests = new List<StreamReadRequest>();
+
+        for (var i = 0; i < numStreams; i++)
+        {
+            var key = items[streamsIndex + 1 + i];
+            var id = items[streamsIndex + 1 + numStreams + i];
+
             var splitId = id.Split("-");
             int? seq = splitId.Length == 1 ? null : int.Parse(splitId[1]);
             requests.Add(new StreamReadRequest(key, long.Parse(splitId[0]), seq));
