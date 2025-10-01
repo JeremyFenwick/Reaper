@@ -101,7 +101,7 @@ public class RedisServer(int port)
     private async Task HandleXReadAsync(StreamWriter writer, XRead xRead)
     {
         var streamEntries = await _streamDb.ReadAsync(xRead);
-        await Resp.WriteRespArrayOfStreamEntriesAsync(writer, streamEntries);
+        await Resp.WriteXReadResponseAsync(writer, streamEntries);
     }
 
     private async Task HandleXRangeAsync(StreamWriter writer, XRange xRange)

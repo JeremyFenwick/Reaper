@@ -292,4 +292,31 @@ public static class Resp
     {
         await writer.WriteAsync($"-ERR {message}\r\n");
     }
+
+    public static async Task WriteXReadResponseAsync(StreamWriter writer,
+        List<(string Key, List<StreamDb.StreamEntry> Entries)> streams)
+    {
+        if (streams.Count == 0 || streams.All(s => s.Entries.Count == 0))
+        {
+            await WriteNullArrayAsync(writer);
+            return;
+        }
+
+        // Filter out streams with no entries
+        var nonEmptyStreams = streams.Where(s => s.Entries.Count > 0).ToList();
+
+        await writer.WriteAsync($"*{nonEmptyStreams.Count}\r\n");
+
+        foreach (var (key, entries) in nonEmptyStreams)
+        {
+            // Each stream is an array of 2 elements: [stream_key, entries_array]
+            await writer.WriteAsync("*2\r\n");
+
+            // Write the stream key
+            await WriteBulkStringAsync(writer, key);
+
+            // Write the entries for this stream
+            await WriteRespArrayOfStreamEntriesAsync(writer, entries);
+        }
+    }
 }

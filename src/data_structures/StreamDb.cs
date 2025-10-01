@@ -41,9 +41,9 @@ public class StreamDb
         return tcs.Task;
     }
 
-    public Task<List<StreamEntry>> ReadAsync(XRead xRead)
+    public Task<List<(string, List<StreamEntry>)>> ReadAsync(XRead xRead)
     {
-        var tcs = new TaskCompletionSource<List<StreamEntry>>();
+        var tcs = new TaskCompletionSource<List<(string, List<StreamEntry>)>>();
         _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, tcs));
         return tcs.Task;
     }
@@ -96,19 +96,21 @@ public class StreamDb
 
     private record XReadCommand(
         List<StreamReadRequest> Requests,
-        TaskCompletionSource<List<StreamEntry>> Tcs) : ICommand
+        TaskCompletionSource<List<(string, List<StreamEntry>)>> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbStream> db)
         {
-            var result = new List<StreamEntry>();
+            var result = new List<(string, List<StreamEntry>)>();
             foreach (var request in Requests)
             {
+                var output = new List<StreamEntry>();
                 if (!db.TryGetValue(request.Key, out var stream)) continue;
                 stream.Entries
                     .Where(e => e.Timestamp >= request.Start &&
                                 (request.Sequence == null || e.Sequence >= request.Sequence))
                     .ToList()
-                    .ForEach(e => result.Add(e));
+                    .ForEach(e => output.Add(e));
+                result.Add((request.Key, output));
             }
 
             Tcs.SetResult(result);
