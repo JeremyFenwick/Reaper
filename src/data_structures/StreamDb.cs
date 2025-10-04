@@ -80,7 +80,7 @@ public class StreamDb
                     RunBlockedCommands(add.Key, blockedCommands);
                     break;
                 case XReadCommand { Token: not null } read
-                    when read.Requests.Any(r => !_kvDb.ContainsKey(r.Key) || _kvDb[r.Key].Entries.Count == 0):
+                    when ShouldBlockRead(read, _kvDb):
                     read.Requests.ForEach(r =>
                     {
                         if (!blockedCommands.ContainsKey(r.Key))
@@ -103,7 +103,7 @@ public class StreamDb
 
         foreach (var request in linkedList)
             // Check if all requested streams now have data
-            if (request.Requests.All(r => _kvDb.ContainsKey(r.Key) && _kvDb[r.Key].Entries.Count > 0))
+            if (!ShouldBlockRead(request, _kvDb))
                 toExecute.Add(request);
 
         foreach (var request in toExecute)
@@ -132,6 +132,21 @@ public class StreamDb
         }
 
         foreach (var key in keysToRemove) blockedCommands.Remove(key);
+    }
+
+    private bool ShouldBlockRead(XReadCommand read, Dictionary<string, DbStream> db)
+    {
+        return read.Requests.Any(r =>
+        {
+            if (!db.ContainsKey(r.Key)) return true;
+
+            var stream = db[r.Key];
+            var hasNewEntries = stream.Entries.Any(e =>
+                e.Timestamp > r.Start ||
+                (e.Timestamp == r.Start && r.Sequence != null && e.Sequence > r.Sequence));
+
+            return !hasNewEntries;
+        });
     }
 
     // COMMANDS
