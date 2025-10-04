@@ -32,6 +32,6 @@ public record Unknown : RespMessage;
 
 // XREAD + HELPER RECORD
 
-public record XRead(List<StreamReadRequest> Requests) : RespMessage;
+public record XRead(long? Block, List<StreamReadRequest> Requests) : RespMessage;
 
 public record StreamReadRequest(string Key, long Start, int? Sequence);

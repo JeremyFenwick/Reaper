@@ -41,10 +41,19 @@ public class StreamDb
         return tcs.Task;
     }
 
-    public Task<List<(string, List<StreamEntry>)>> ReadAsync(XRead xRead)
+    public Task<List<(string, List<StreamEntry>)>?> ReadAsync(XRead xRead)
     {
-        var tcs = new TaskCompletionSource<List<(string, List<StreamEntry>)>>();
-        _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, tcs));
+        var tcs = new TaskCompletionSource<List<(string, List<StreamEntry>)>?>();
+        CancellationToken? token = null;
+        if (xRead.Block != null)
+        {
+            var cts = new CancellationTokenSource((int)xRead.Block.Value);
+            cts.Token.Register(() => tcs.TrySetResult(null));
+            token = cts.Token;
+        }
+
+
+        _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, token, tcs));
         return tcs.Task;
     }
 
@@ -52,11 +61,65 @@ public class StreamDb
 
     private async Task RunAsync()
     {
-        await foreach (var command in _commandChannel.Reader.ReadAllAsync()) command.Execute(_kvDb);
+        var blockedCommands = new Dictionary<string, LinkedList<XReadCommand>>();
+        var commandCounter = 0;
+
+        await foreach (var command in _commandChannel.Reader.ReadAllAsync())
+        {
+            if (commandCounter++ % 1000 == 0) commandCounter = 0;
+            switch (command)
+            {
+                case XAddCommand add:
+                    RunBlockedCommands(add.Key, blockedCommands);
+                    break;
+                case XReadCommand read
+                    when read.Requests.Any(r => !_kvDb.ContainsKey(r.Key) || _kvDb[r.Key].Entries.Count == 0):
+                    read.Requests.ForEach(r =>
+                    {
+                        if (!blockedCommands.ContainsKey(r.Key))
+                            blockedCommands[r.Key] = [];
+                        blockedCommands[r.Key].AddLast(read);
+                    });
+                    break;
+                case XReadCommand read:
+                    read.Execute(_kvDb);
+                    break;
+            }
+
+            command.Execute(_kvDb);
+        }
+    }
+
+    private void RunBlockedCommands(string key, Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
+    {
+        if (!blockedCommands.TryGetValue(key, out var linkedList)) return;
+        foreach (var request in linkedList)
+        {
+            if (request.Requests.Any(r => !_kvDb.ContainsKey(r.Key) || _kvDb[r.Key].Entries.Count == 0)) continue;
+            request.Execute(_kvDb);
+            linkedList.Remove(request);
+        }
+    }
+
+    private void ClearBlockedCommands(Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
+    {
+        var keysToRemove = new List<string>();
+        foreach (var (key, value) in blockedCommands)
+        {
+            foreach (var command in value)
+                if (command.Token is { IsCancellationRequested: true })
+                {
+                    command.Tcs.TrySetResult(null);
+                    value.Remove(command);
+                }
+
+            if (value.Count == 0) keysToRemove.Add(key);
+        }
+
+        foreach (var key in keysToRemove) blockedCommands.Remove(key);
     }
 
     // COMMANDS
-
     private record XRangeCommand(
         string Key,
         long Start,
@@ -96,10 +159,17 @@ public class StreamDb
 
     private record XReadCommand(
         List<StreamReadRequest> Requests,
-        TaskCompletionSource<List<(string, List<StreamEntry>)>> Tcs) : ICommand
+        CancellationToken? Token,
+        TaskCompletionSource<List<(string, List<StreamEntry>)>?> Tcs) : ICommand
     {
         public void Execute(Dictionary<string, DbStream> db)
         {
+            if (Token is { IsCancellationRequested: true })
+            {
+                Tcs.TrySetResult(null);
+                return;
+            }
+
             var result = new List<(string, List<StreamEntry>)>();
             foreach (var request in Requests)
             {

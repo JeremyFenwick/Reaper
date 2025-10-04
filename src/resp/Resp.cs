@@ -1,3 +1,4 @@
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using codecrafters_redis.data_structures;
 
@@ -132,6 +133,11 @@ public static class Resp
 
     private static XRead GenerateXRead(List<string> items)
     {
+        // Get the block time if it exists
+        long? blockTime = null;
+        var blockIndex = items.IndexOf("BLOCK");
+        if (blockIndex != -1) blockTime = long.Parse(items[blockIndex + 1]);
+
         // Find where "streams" keyword is
         var streamsIndex = -1;
         for (var i = 1; i < items.Count; i++)
@@ -162,7 +168,7 @@ public static class Resp
             requests.Add(new StreamReadRequest(key, long.Parse(splitId[0]), seq));
         }
 
-        return new XRead(requests);
+        return new XRead(blockTime, requests);
     }
 
     private static XRange GenerateXRange(List<string> items)
