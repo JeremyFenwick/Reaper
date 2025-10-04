@@ -45,14 +45,12 @@ public class StreamDb
     {
         Console.WriteLine(xRead);
         var tcs = new TaskCompletionSource<List<(string, List<StreamEntry>)>?>();
-        CancellationToken? token = null;
-        if (xRead.Block != null)
+        CancellationToken? token = xRead.Block switch
         {
-            var cts = new CancellationTokenSource((int)xRead.Block.Value);
-            cts.Token.Register(() => tcs.TrySetResult(null));
-            token = cts.Token;
-        }
-
+            null => null,
+            0 => CancellationToken.None,
+            _ => new CancellationTokenSource((int)xRead.Block).Token
+        };
 
         _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, token, tcs));
         return tcs.Task;
