@@ -98,11 +98,21 @@ public class StreamDb
     private void RunBlockedCommands(string key, Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
     {
         if (!blockedCommands.TryGetValue(key, out var linkedList)) return;
+
+        var toExecute = new List<XReadCommand>();
+
         foreach (var request in linkedList)
+            // Check if all requested streams now have data
+            if (request.Requests.All(r => _kvDb.ContainsKey(r.Key) && _kvDb[r.Key].Entries.Count > 0))
+                toExecute.Add(request);
+
+        foreach (var request in toExecute)
         {
-            if (request.Requests.Any(r => !_kvDb.ContainsKey(r.Key) || _kvDb[r.Key].Entries.Count == 0)) continue;
             request.Execute(_kvDb);
-            linkedList.Remove(request);
+            // Remove from all keys' blocked lists
+            foreach (var req in request.Requests)
+                if (blockedCommands.TryGetValue(req.Key, out var list))
+                    list.Remove(request);
         }
     }
 
