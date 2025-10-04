@@ -91,8 +91,6 @@ public class StreamDb
                     read.Execute(_kvDb);
                     break;
             }
-
-            command.Execute(_kvDb);
         }
     }
 
