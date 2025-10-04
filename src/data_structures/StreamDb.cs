@@ -76,6 +76,7 @@ public class StreamDb
             switch (command)
             {
                 case XAddCommand add:
+                    add.Execute(_kvDb);
                     RunBlockedCommands(add.Key, blockedCommands);
                     break;
                 case XReadCommand { Token: not null } read
