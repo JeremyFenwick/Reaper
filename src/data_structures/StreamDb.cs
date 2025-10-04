@@ -66,13 +66,18 @@ public class StreamDb
 
         await foreach (var command in _commandChannel.Reader.ReadAllAsync())
         {
-            if (commandCounter++ % 1000 == 0) commandCounter = 0;
+            if (commandCounter++ % 1000 == 0)
+            {
+                ClearBlockedCommands(blockedCommands);
+                commandCounter = 0;
+            }
+
             switch (command)
             {
                 case XAddCommand add:
                     RunBlockedCommands(add.Key, blockedCommands);
                     break;
-                case XReadCommand read
+                case XReadCommand { Token: not null } read
                     when read.Requests.Any(r => !_kvDb.ContainsKey(r.Key) || _kvDb[r.Key].Entries.Count == 0):
                     read.Requests.ForEach(r =>
                     {
