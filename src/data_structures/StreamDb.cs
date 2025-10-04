@@ -87,8 +87,8 @@ public class StreamDb
                         blockedCommands[r.Key].AddLast(read);
                     });
                     break;
-                case XReadCommand read:
-                    read.Execute(_kvDb);
+                default:
+                    command.Execute(_kvDb);
                     break;
             }
         }
