@@ -181,7 +181,7 @@ public class StreamDb
                 var output = new List<StreamEntry>();
                 if (!db.TryGetValue(request.Key, out var stream)) continue;
                 stream.Entries
-                    .Where(e => e.Timestamp >= request.Start &&
+                    .Where(e => e.Timestamp > request.Start &&
                                 (request.Sequence == null || e.Sequence >= request.Sequence))
                     .ToList()
                     .ForEach(e => output.Add(e));
