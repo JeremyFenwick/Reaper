@@ -136,14 +136,13 @@ public class StreamDb
 
     private bool ShouldBlockRead(XReadCommand read, Dictionary<string, DbStream> db)
     {
-        return read.Requests.Any(r =>
+        return read.Requests.Any(readRequest =>
         {
-            if (!db.ContainsKey(r.Key)) return true;
+            if (!db.ContainsKey(readRequest.Key)) return true;
 
-            var stream = db[r.Key];
-            var hasNewEntries = stream.Entries.Any(e =>
-                e.Timestamp > r.Start ||
-                (e.Timestamp == r.Start && r.Sequence != null && e.Sequence > r.Sequence));
+            var stream = db[readRequest.Key];
+            var hasNewEntries = stream.Entries.Any(streamEntry =>
+                IsIdGreater(streamEntry, readRequest.Start, readRequest.Sequence));
 
             return !hasNewEntries;
         });
@@ -206,9 +205,7 @@ public class StreamDb
                 var output = new List<StreamEntry>();
                 if (!db.TryGetValue(request.Key, out var stream)) continue;
                 stream.Entries
-                    .Where(e =>
-                        e.Timestamp > request.Start ||
-                        (e.Timestamp == request.Start && request.Sequence != null && e.Sequence > request.Sequence))
+                    .Where(e => IsIdGreater(e, request.Start, request.Sequence))
                     .ToList()
                     .ForEach(e => output.Add(e));
                 result.Add((request.Key, output));
@@ -269,5 +266,12 @@ public class StreamDb
         if (timestamp == lastTimestamp) sequence = lastSequence + 1;
 
         return (true, timestamp.Value, sequence.Value);
+    }
+
+    private static bool IsIdGreater(StreamEntry entry, long startTimestamp, int? startSequence)
+    {
+        var seq = startSequence ?? 0; // normalize null -> 0
+        return entry.Timestamp > startTimestamp ||
+               (entry.Timestamp == startTimestamp && entry.Sequence > seq);
     }
 }
