@@ -135,8 +135,12 @@ public static class Resp
     {
         // Get the block time if it exists
         long? blockTime = null;
-        var blockIndex = items.IndexOf("BLOCK");
-        if (blockIndex != -1) blockTime = long.Parse(items[blockIndex + 1]);
+        for (var i = 1; i < items.Count; i++)
+            if (items[i].Equals("BLOCK", StringComparison.OrdinalIgnoreCase))
+            {
+                blockTime = long.Parse(items[i + 1]);
+                break;
+            }
 
         // Find where "streams" keyword is
         var streamsIndex = -1;
