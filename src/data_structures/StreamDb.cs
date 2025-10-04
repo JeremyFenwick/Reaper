@@ -43,6 +43,7 @@ public class StreamDb
 
     public Task<List<(string, List<StreamEntry>)>?> ReadAsync(XRead xRead)
     {
+        Console.WriteLine(xRead);
         var tcs = new TaskCompletionSource<List<(string, List<StreamEntry>)>?>();
         CancellationToken? token = null;
         if (xRead.Block != null)
