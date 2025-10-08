@@ -166,10 +166,17 @@ public static class Resp
         {
             var key = items[streamsIndex + 1 + i];
             var id = items[streamsIndex + 1 + numStreams + i];
-
-            var splitId = id.Split("-");
-            int? seq = splitId.Length == 1 ? null : int.Parse(splitId[1]);
-            requests.Add(new StreamReadRequest(key, long.Parse(splitId[0]), seq));
+            var startBlocking = id == "$";
+            if (startBlocking)
+            {
+                requests.Add(new StreamReadRequest(key, 0, 0, startBlocking));
+            }
+            else
+            {
+                var splitId = id.Split("-");
+                var seq = splitId.Length == 1 ? 0 : int.Parse(splitId[1]);
+                requests.Add(new StreamReadRequest(key, long.Parse(splitId[0]), seq, startBlocking));
+            }
         }
 
         return new XRead(blockTime, requests);

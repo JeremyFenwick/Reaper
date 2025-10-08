@@ -48,19 +48,21 @@ public class StreamDb
 
         CancellationToken? token;
 
-        if (xRead.Block == null)
+        switch (xRead.Block)
         {
-            token = null;
-        }
-        else if (xRead.Block.Value == 0)
-        {
-            token = CancellationToken.None;
-        }
-        else
-        {
-            var cts = new CancellationTokenSource((int)xRead.Block);
-            cts.Token.Register(() => tcs.TrySetResult(null));
-            token = cts.Token;
+            case null:
+                token = null;
+                break;
+            case 0:
+                token = CancellationToken.None;
+                break;
+            default:
+            {
+                var cts = new CancellationTokenSource((int)xRead.Block);
+                cts.Token.Register(() => tcs.TrySetResult(null));
+                token = cts.Token;
+                break;
+            }
         }
 
         _commandChannel.Writer.TryWrite(new XReadCommand(xRead.Requests, token, tcs));
@@ -88,6 +90,9 @@ public class StreamDb
                     add.Execute(_kvDb);
                     RunBlockedCommands(add.Key, blockedCommands);
                     break;
+                case XReadCommand blockingRead when blockingRead.Requests.Any(r => r.StartBlocking):
+                    AutoBlockingCommand(blockingRead);
+                    break;
                 case XReadCommand { Token: not null } read
                     when ShouldBlockRead(read, _kvDb):
                     read.Requests.ForEach(r =>
@@ -102,6 +107,31 @@ public class StreamDb
                     break;
             }
         }
+    }
+
+    private void AutoBlockingCommand(XReadCommand read)
+    {
+        var replacement = new XReadCommand([], read.Token, read.Tcs);
+        foreach (var request in read.Requests)
+        {
+            if (!request.StartBlocking)
+            {
+                replacement.Requests.Add(request);
+                continue;
+            }
+
+            var lookup = _kvDb.TryGetValue(request.Key, out var stream);
+            if (!lookup || stream?.Entries.Count == 0)
+            {
+                replacement.Requests.Add(new StreamReadRequest(request.Key, 0, 0, false));
+                continue;
+            }
+
+            replacement.Requests.Add(new StreamReadRequest(request.Key, stream!.Entries[^1].Timestamp,
+                stream.Entries[^1].Sequence, false));
+        }
+
+        _commandChannel.Writer.TryWrite(replacement);
     }
 
     private void RunBlockedCommands(string key, Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
@@ -125,7 +155,7 @@ public class StreamDb
         }
     }
 
-    private void ClearBlockedCommands(Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
+    private static void ClearBlockedCommands(Dictionary<string, LinkedList<XReadCommand>> blockedCommands)
     {
         var keysToRemove = new List<string>();
         foreach (var (key, value) in blockedCommands)
