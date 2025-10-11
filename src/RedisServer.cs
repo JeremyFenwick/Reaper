@@ -94,8 +94,15 @@ public class RedisServer(int port)
             XAdd xAdd => HandleXAddAsync(writer, xAdd),
             XRange xRange => HandleXRangeAsync(writer, xRange),
             XRead xRead => HandleXReadAsync(writer, xRead),
+            Incr incr => HandleIncrement(writer, incr),
             _ => Task.CompletedTask
         });
+    }
+
+    private Task HandleIncrement(StreamWriter writer, Incr incr)
+    {
+        var res = _basicDb.Increment(incr.Key);
+        return Resp.WriteIntegerAsync(writer, res); 
     }
 
     private async Task HandleXReadAsync(StreamWriter writer, XRead xRead)

@@ -91,7 +91,7 @@ public class StreamDb
                     RunBlockedCommands(add.Key, blockedCommands);
                     break;
                 case XReadCommand blockingRead when blockingRead.Requests.Any(r => r.StartBlocking):
-                    AutoBlockingCommand(blockingRead);
+                    RewriteAutoBlockingCommand(blockingRead);
                     break;
                 case XReadCommand { Token: not null } read
                     when ShouldBlockRead(read, _kvDb):
@@ -109,17 +109,19 @@ public class StreamDb
         }
     }
 
-    private void AutoBlockingCommand(XReadCommand read)
+    private void RewriteAutoBlockingCommand(XReadCommand read)
     {
         var replacement = new XReadCommand([], read.Token, read.Tcs);
         foreach (var request in read.Requests)
         {
+            // If we are not blocking then we just need to add the request to the list
             if (!request.StartBlocking)
             {
                 replacement.Requests.Add(request);
                 continue;
             }
 
+            // Check to see if the request exists. If not we just add a 0-0 request
             var lookup = _kvDb.TryGetValue(request.Key, out var stream);
             if (!lookup || stream?.Entries.Count == 0)
             {

@@ -127,6 +127,7 @@ public static class Resp
             "XADD" => GenerateXAdd(items),
             "XRANGE" => GenerateXRange(items),
             "XREAD" => GenerateXRead(items),
+            "INCR" => new Incr(items[1]),
             _ => new Unknown()
         };
     }

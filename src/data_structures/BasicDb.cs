@@ -25,6 +25,14 @@ public class BasicDb
         _kvDb[key] = new DbEntry(true, value, expiry);
     }
 
+    public int Increment(string key)
+    {
+        var entry = Get(key);
+        var intEntry = int.TryParse(entry.Value, out var result) ? result : 0;
+        Set(key, (intEntry + 1).ToString());
+        return intEntry + 1;
+    }
+
     public void RemoveExpiredKeys()
     {
         var expiredKeys = GetExpiredKeys();
