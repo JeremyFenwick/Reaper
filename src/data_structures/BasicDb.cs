@@ -6,6 +6,8 @@ public class BasicDb
 {
     public record DbEntry(bool Exists, string Value, DateTime? Expiry);
 
+    public record Result(bool Error, int Value, string Message);
+
     private readonly ConcurrentDictionary<string, DbEntry> _kvDb = new();
 
     public DbEntry Get(string key)
@@ -25,12 +27,15 @@ public class BasicDb
         _kvDb[key] = new DbEntry(true, value, expiry);
     }
 
-    public int Increment(string key)
+    public Result Increment(string key)
     {
-        var entry = Get(key);
-        var intEntry = int.TryParse(entry.Value, out var result) ? result : 0;
-        Set(key, (intEntry + 1).ToString());
-        return intEntry + 1;
+        int intEntry;
+        if (!_kvDb.TryGetValue(key, out var value)) intEntry = 0;
+        else if (!int.TryParse(value.Value, out intEntry))
+            return new Result(true, 0, "value is not an integer or out of range");
+        intEntry++;
+        Set(key, intEntry.ToString());
+        return new Result(false, intEntry, "");
     }
 
     public void RemoveExpiredKeys()

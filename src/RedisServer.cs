@@ -99,10 +99,11 @@ public class RedisServer(int port)
         });
     }
 
-    private Task HandleIncrement(StreamWriter writer, Incr incr)
+    private async Task HandleIncrement(StreamWriter writer, Incr incr)
     {
         var res = _basicDb.Increment(incr.Key);
-        return Resp.WriteIntegerAsync(writer, res); 
+        if (res.Error) await Resp.WriteSimpleErrorAsync(writer, res.Message);
+        else await Resp.WriteIntegerAsync(writer, res.Value);
     }
 
     private async Task HandleXReadAsync(StreamWriter writer, XRead xRead)
