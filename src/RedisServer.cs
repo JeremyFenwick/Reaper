@@ -84,6 +84,18 @@ public class RedisServer(int port)
             context.TransactionInProgress = true;
             await Resp.WriteSimpleStringAsync(writer, "OK");
         }
+        else if (message is Exec)
+        {
+            await Resp.WriteArrayStartAsync(writer, context.TransactionCommands.Count);
+            foreach (var command in context.TransactionCommands) await HandleMessageExecution(writer, command);
+            context.TransactionInProgress = false;
+            context.TransactionCommands.Clear();
+        }
+        else if (context.TransactionInProgress)
+        {
+            context.TransactionCommands.Add(message);
+            await Resp.WriteSimpleStringAsync(writer, "QUEUED");
+        }
         else
         {
             await HandleMessageExecution(writer, message);

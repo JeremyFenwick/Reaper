@@ -37,3 +37,5 @@ public record StreamReadRequest(string Key, long Start, int Sequence, bool Start
 public record Incr(string Key) : RespMessage;
 
 public record Multi() : RespMessage;
+
+public record Exec() : RespMessage;

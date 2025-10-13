@@ -128,6 +128,7 @@ public static class Resp
             "XREAD" => GenerateXRead(items),
             "INCR" => new Incr(items[1]),
             "MULTI" => new Multi(),
+            "EXEC" => new Exec(),
             _ => new Unknown()
         };
     }
@@ -316,6 +317,11 @@ public static class Resp
 
             await WriteRespArrayAsync(writer, flatFields);
         }
+    }
+
+    public static async Task WriteArrayStartAsync(StreamWriter writer, int count)
+    {
+        await writer.WriteAsync($"*{count}\r\n");
     }
 
     public static async Task WriteNullArrayAsync(StreamWriter writer)
