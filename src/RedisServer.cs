@@ -65,7 +65,7 @@ public class RedisServer(int port)
             while (offset < bufferLength && Resp.TryParse(buffer.AsSpan(offset, bufferLength - offset), out var respMsg,
                        out var consumed))
             {
-                await HandleRequestAsync(writer, respMsg);
+                await HandleRequestAsync(writer, respMsg, context);
                 await writer.FlushAsync();
                 offset += consumed;
             }
