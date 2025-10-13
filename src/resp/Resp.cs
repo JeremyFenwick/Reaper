@@ -1,4 +1,3 @@
-using System.Runtime.Intrinsics.X86;
 using System.Text;
 using codecrafters_redis.data_structures;
 
@@ -128,6 +127,7 @@ public static class Resp
             "XRANGE" => GenerateXRange(items),
             "XREAD" => GenerateXRead(items),
             "INCR" => new Incr(items[1]),
+            "MULTI" => new Multi(),
             _ => new Unknown()
         };
     }

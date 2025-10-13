@@ -30,10 +30,10 @@ public record XRange(string Key, long Start, int? StartSequence, long End, int? 
 
 public record Unknown : RespMessage;
 
-// XREAD + HELPER RECORD
-
 public record XRead(long? Block, List<StreamReadRequest> Requests) : RespMessage;
 
 public record StreamReadRequest(string Key, long Start, int Sequence, bool StartBlocking);
 
 public record Incr(string Key) : RespMessage;
+
+public record Multi() : RespMessage;

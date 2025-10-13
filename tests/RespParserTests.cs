@@ -16,7 +16,6 @@ public class RespParserTests
         {
             Assert.That(respMsg, Is.TypeOf<Ping>());
             Assert.That(consumed, Is.EqualTo(14));
-            ;
         }
         else
         {

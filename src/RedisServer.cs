@@ -51,6 +51,7 @@ public class RedisServer(int port)
         await using var writer = new StreamWriter(stream);
         var buffer = new byte[4096];
         var bufferLength = 0;
+        var context = new ClientContext();
 
         while (true)
         {
@@ -76,7 +77,20 @@ public class RedisServer(int port)
         }
     }
 
-    private async Task HandleRequestAsync(StreamWriter writer, RespMessage? message)
+    private async Task HandleRequestAsync(StreamWriter writer, RespMessage message, ClientContext context)
+    {
+        if (message is Multi)
+        {
+            context.TransactionInProgress = true;
+            await Resp.WriteSimpleStringAsync(writer, "OK");
+        }
+        else
+        {
+            await HandleMessageExecution(writer, message);
+        }
+    }
+
+    private async Task HandleMessageExecution(StreamWriter writer, RespMessage? message)
     {
         await (message switch
         {
