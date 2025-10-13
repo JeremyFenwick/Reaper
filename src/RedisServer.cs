@@ -84,10 +84,15 @@ public class RedisServer(int port)
             context.TransactionInProgress = true;
             await Resp.WriteSimpleStringAsync(writer, "OK");
         }
+        else if (message is Exec && !context.TransactionInProgress)
+        {
+            await Resp.WriteSimpleErrorAsync(writer, "EXEC without MULTI");
+        }
         else if (message is Exec)
         {
             await Resp.WriteArrayStartAsync(writer, context.TransactionCommands.Count);
             foreach (var command in context.TransactionCommands) await HandleMessageExecution(writer, command);
+            // Reset the context
             context.TransactionInProgress = false;
             context.TransactionCommands.Clear();
         }
