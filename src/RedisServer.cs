@@ -96,6 +96,10 @@ public class RedisServer(int port)
             context.TransactionInProgress = false;
             context.TransactionCommands.Clear();
         }
+        else if (message is Discard && !context.TransactionInProgress)
+        {
+            await Resp.WriteSimpleErrorAsync(writer, "DISCARD without MULTI");
+        }
         else if (message is Discard)
         {
             // Reset the context
