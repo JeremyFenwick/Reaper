@@ -129,6 +129,7 @@ public static class Resp
             "INCR" => new Incr(items[1]),
             "MULTI" => new Multi(),
             "EXEC" => new Exec(),
+            "DISCARD" => new Discard(),
             _ => new Unknown()
         };
     }

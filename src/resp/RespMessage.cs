@@ -39,3 +39,5 @@ public record Incr(string Key) : RespMessage;
 public record Multi() : RespMessage;
 
 public record Exec() : RespMessage;
+
+public record Discard() : RespMessage;
