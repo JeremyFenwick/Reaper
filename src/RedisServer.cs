@@ -79,42 +79,47 @@ public class RedisServer(int port)
 
     private async Task HandleRequestAsync(StreamWriter writer, RespMessage message, ClientContext context)
     {
-        if (message is Multi)
+        switch (message)
         {
-            context.TransactionInProgress = true;
-            await Resp.WriteSimpleStringAsync(writer, "OK");
-        }
-        else if (message is Exec && !context.TransactionInProgress)
-        {
-            await Resp.WriteSimpleErrorAsync(writer, "EXEC without MULTI");
-        }
-        else if (message is Exec)
-        {
-            await Resp.WriteArrayStartAsync(writer, context.TransactionCommands.Count);
-            foreach (var command in context.TransactionCommands) await HandleMessageExecution(writer, command);
-            // Reset the context
-            context.TransactionInProgress = false;
-            context.TransactionCommands.Clear();
-        }
-        else if (message is Discard && !context.TransactionInProgress)
-        {
-            await Resp.WriteSimpleErrorAsync(writer, "DISCARD without MULTI");
-        }
-        else if (message is Discard)
-        {
-            // Reset the context
-            context.TransactionInProgress = false;
-            context.TransactionCommands.Clear();
-            await Resp.WriteSimpleStringAsync(writer, "OK");
-        }
-        else if (context.TransactionInProgress)
-        {
-            context.TransactionCommands.Add(message);
-            await Resp.WriteSimpleStringAsync(writer, "QUEUED");
-        }
-        else
-        {
-            await HandleMessageExecution(writer, message);
+            case Multi:
+                context.TransactionInProgress = true;
+                await Resp.WriteSimpleStringAsync(writer, "OK");
+                break;
+            case Exec when !context.TransactionInProgress:
+                await Resp.WriteSimpleErrorAsync(writer, "EXEC without MULTI");
+                break;
+            case Exec:
+            {
+                await Resp.WriteArrayStartAsync(writer, context.TransactionCommands.Count);
+                foreach (var command in context.TransactionCommands) await HandleMessageExecution(writer, command);
+                // Reset the context
+                context.TransactionInProgress = false;
+                context.TransactionCommands.Clear();
+                break;
+            }
+            case Discard when !context.TransactionInProgress:
+                await Resp.WriteSimpleErrorAsync(writer, "DISCARD without MULTI");
+                break;
+            case Discard:
+                // Reset the context
+                context.TransactionInProgress = false;
+                context.TransactionCommands.Clear();
+                await Resp.WriteSimpleStringAsync(writer, "OK");
+                break;
+            default:
+            {
+                if (context.TransactionInProgress)
+                {
+                    context.TransactionCommands.Add(message);
+                    await Resp.WriteSimpleStringAsync(writer, "QUEUED");
+                }
+                else
+                {
+                    await HandleMessageExecution(writer, message);
+                }
+
+                break;
+            }
         }
     }
 
