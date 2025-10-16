@@ -142,8 +142,15 @@ public class RedisServer(int port)
             XRange xRange => HandleXRangeAsync(writer, xRange),
             XRead xRead => HandleXReadAsync(writer, xRead),
             Incr incr => HandleIncrement(writer, incr),
+            Info info => HandleInfo(writer, info),
             _ => Task.CompletedTask
         });
+    }
+
+    private async Task HandleInfo(StreamWriter writer, Info info)
+    {
+        if (info.Replication) await Resp.WriteBulkStringAsync(writer, "# Replication \r\nrole:master");
+        else await Resp.WriteSimpleStringAsync(writer, "redis_version:0.0.1");
     }
 
     private async Task HandleIncrement(StreamWriter writer, Incr incr)

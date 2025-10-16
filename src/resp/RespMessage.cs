@@ -41,3 +41,7 @@ public record Multi() : RespMessage;
 public record Exec() : RespMessage;
 
 public record Discard() : RespMessage;
+
+// This is not full coverage of what real redis would offer
+public record Info(bool Server = false, bool Clients = false, bool Memory = false, bool Replication = false)
+    : RespMessage;

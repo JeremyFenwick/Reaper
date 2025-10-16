@@ -130,11 +130,19 @@ public static class Resp
             "MULTI" => new Multi(),
             "EXEC" => new Exec(),
             "DISCARD" => new Discard(),
+            "INFO" => GenerateInfo(items),
             _ => new Unknown()
         };
     }
 
-    private static XRead GenerateXRead(List<string> items)
+    // Not comprehensive, just checks for the replication argument
+    private static RespMessage GenerateInfo(List<string> items)
+    {
+        if (items.Count < 2 || items[1] != "replication") return new Info();
+        return new Info(Replication: true);
+    }
+
+    private static RespMessage GenerateXRead(List<string> items)
     {
         // Get the block time if it exists
         long? blockTime = null;
