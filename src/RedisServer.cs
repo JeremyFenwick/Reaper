@@ -7,19 +7,16 @@ using Type = codecrafters_redis.resp.Type;
 
 namespace codecrafters_redis;
 
-public class RedisServer(int port, bool isMaster = true, string masterHost = "localhost", int masterPort = 0)
+public class RedisServer(int port, ServerContext serverContext)
 {
     private readonly TcpListener _listener = TcpListener.Create(port);
     private readonly BasicDb _basicDb = new();
     private readonly ListDb _listDb = new();
     private readonly ConcurrentDictionary<string, RedisDataType> _keyStore = new();
     private readonly StreamDb _streamDb = new();
-    private readonly bool _isMaster = isMaster;
-    private readonly string _masterHost = masterHost;
-    private readonly int _masterPort = masterPort;
+    private readonly ServerContext _serverContext = serverContext;
 
     // BASIC START FUNCTIONS + RELATED HELPERS
-
     public async Task StartAsync()
     {
         _listener.Start();
@@ -154,7 +151,7 @@ public class RedisServer(int port, bool isMaster = true, string masterHost = "lo
     {
         if (info.Replication)
         {
-            var role = _isMaster ? "master" : "slave";
+            var role = _serverContext.IsMaster ? "master" : "slave";
             await Resp.WriteBulkStringAsync(writer, $"# Replication \r\nrole:{role}");
         }
         else
