@@ -4,11 +4,11 @@ using Microsoft.Extensions.Logging.Console;
 
 namespace codecrafters_redis;
 
-public static class RedisLoggerFactory
+public static class RedisLogger
 {
     private static readonly ILoggerFactory Factory;
     
-    static RedisLoggerFactory()
+    static RedisLogger()
     {
         Factory = LoggerFactory.Create(builder =>
         {
