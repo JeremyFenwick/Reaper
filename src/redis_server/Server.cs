@@ -67,6 +67,7 @@ public class Server(ILogger<Server> logger, Context ctx)
             Ping _ => new Pong(),
             EchoRequest echo => new BulkString(echo.Msg),
             Get get => await HandleGet(get),
+            Set set => await HandleSet(set),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
