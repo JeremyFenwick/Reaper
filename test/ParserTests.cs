@@ -12,7 +12,7 @@ public class ParserTests
         var data = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
         var success = Parser.TryParse(data, out var consumed, out var request);
         Assert.That(success, Is.True);
-        Assert.That(request, Is.TypeOf<PingRequest>());
+        Assert.That(request, Is.TypeOf<Ping>());
         Assert.That(consumed, Is.EqualTo(14));
     }
 

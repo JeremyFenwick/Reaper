@@ -2,6 +2,7 @@
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using codecrafters_redis.data_structures;
 using codecrafters_redis.resp;
 using Microsoft.Extensions.Logging;
 using Encoder = System.Text.Encoder;
@@ -10,11 +11,12 @@ namespace codecrafters_redis.redis_server;
 
 public class Server(ILogger<Server> logger, Context ctx)
 {
+    private KeyValueStore store = new KeyValueStore(RedisLogger.CreateLogger<KeyValueStore>());
     public void Run()
     {
         var listener = new TcpListener(IPAddress.Any, ctx.Port);
         listener.Start();
-        logger.LogInformation($"Redis server started. Context: {ctx}");
+        logger.LogInformation($"Redis server started. {ctx}");
         
         // Begin accepting connections
         while (true)
@@ -24,6 +26,8 @@ public class Server(ILogger<Server> logger, Context ctx)
             Task.Run(() => RespondAsync(client));
         }
     }
+    
+    // CLIENT HANDLING
 
     private async Task RespondAsync(TcpClient client)
     {
@@ -41,7 +45,7 @@ public class Server(ILogger<Server> logger, Context ctx)
                 logger.LogInformation($"Received request {request} from client {client.Client.RemoteEndPoint}");
                 // Remove the consumed data
                 requestData.RemoveRange(0, consumed);
-                var response = GenerateResponse(request);
+                var response = await GenerateResponse(request);
                 logger.LogInformation($"Sending response {response} to client {client.Client.RemoteEndPoint}");
                 await stream.WriteAsync(response.ToBytes());
             }
@@ -56,13 +60,29 @@ public class Server(ILogger<Server> logger, Context ctx)
         }
     }
 
-    private Response GenerateResponse(Request request)
+    private async Task<Response> GenerateResponse(Request request)
     {
         return request switch
         {
-            PingRequest _ => new PongResponse(),
-            EchoRequest echo => new EchoResponse(echo.Msg),
+            Ping _ => new Pong(),
+            EchoRequest echo => new BulkString(echo.Msg),
+            Get get => await HandleGet(get),
             _ => throw new ArgumentOutOfRangeException()
         };
+    }
+    
+    // KV STORE OPERATIONS
+    private async Task<Response> HandleGet(Get get)
+    {
+        var result = await store.Get(get);
+        if (result == null) return new NullBulkString();
+        return new BulkString(result);
+    }
+
+    private async Task<Response> HandleSet(Set set)
+    {
+        var result = await store.Set(set);
+        if (result) return new Ok();
+        throw new ArgumentOutOfRangeException();
     }
 }
