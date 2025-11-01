@@ -8,7 +8,7 @@ public static class Parser
     public static bool TryParse(ReadOnlySpan<byte> data, out int consumed, out Request request)
     {
         consumed = 0;
-        request = new Void();
+        request = new VoidRequest();
         if (data.Length < 1 || data[0] != '*') return false;
         // Get the length of the redis array
         consumed++;
@@ -68,7 +68,7 @@ public static class Parser
     {
         return requestData[0].ToLower() switch
         {
-            "ping" => new Ping(),
+            "ping" => new PingRequest(),
             "echo" => BuildEcho(requestData),
             _ => throw new FormatException("Invalid RESP format")
         };
@@ -78,6 +78,6 @@ public static class Parser
     {
         if (requestData.Count < 2)
             throw new FormatException("Invalid echo request. The request must contain at least two values");
-        return new Echo(requestData[1]);
+        return new EchoRequest(requestData[1]);
     }
 }

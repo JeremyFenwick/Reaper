@@ -8,9 +8,4 @@ public static class RespEncoder
     {
         return Encoding.UTF8.GetBytes($"${msg.Length}\r\n{msg}\r\n");
     }
-
-    public static byte[] Pong()
-    {
-        return "+PONG\r\n"u8.ToArray();
-    }
 }

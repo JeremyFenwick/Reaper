@@ -12,7 +12,7 @@ public class ParserTests
         var data = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
         var success = Parser.TryParse(data, out var consumed, out var request);
         Assert.That(success, Is.True);
-        Assert.That(request, Is.TypeOf<Ping>());
+        Assert.That(request, Is.TypeOf<PingRequest>());
         Assert.That(consumed, Is.EqualTo(14));
     }
 
@@ -30,8 +30,8 @@ public class ParserTests
         var data = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n"u8.ToArray();
         var success = Parser.TryParse(data, out var consumed, out var request);
         Assert.That(success, Is.True);
-        Assert.That(request, Is.TypeOf<Echo>());
-        Assert.That(((Echo)request).Msg, Is.EqualTo("hey"));
+        Assert.That(request, Is.TypeOf<EchoRequest>());
+        Assert.That(((EchoRequest)request).Msg, Is.EqualTo("hey"));
         Assert.That(consumed, Is.EqualTo(23));
     }
 }

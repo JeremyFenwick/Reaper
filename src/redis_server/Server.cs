@@ -42,8 +42,8 @@ public class Server(ILogger<Server> logger, Context ctx)
                 // Remove the consumed data
                 requestData.RemoveRange(0, consumed);
                 var response = GenerateResponse(request);
-                logger.LogInformation($"Sending response of length {response.Length} to client {client.Client.RemoteEndPoint}");
-                await stream.WriteAsync(response);
+                logger.LogInformation($"Sending response {response} to client {client.Client.RemoteEndPoint}");
+                await stream.WriteAsync(response.ToBytes());
             }
         }
         catch (Exception e)
@@ -56,12 +56,12 @@ public class Server(ILogger<Server> logger, Context ctx)
         }
     }
 
-    private byte[] GenerateResponse(Request request)
+    private Response GenerateResponse(Request request)
     {
         return request switch
         {
-            Ping _ => RespEncoder.Pong(),
-            Echo echo => RespEncoder.BulkString(echo.Msg),
+            PingRequest _ => new PongResponse(),
+            EchoRequest echo => new EchoResponse(echo.Msg),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
