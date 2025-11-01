@@ -11,7 +11,7 @@ public class Server(ILogger<Server> logger, Context ctx)
     {
         var listener = new TcpListener(IPAddress.Any, ctx.Port);
         listener.Start();
-        logger.LogInformation($"Redis server started. Listening on port {ctx.Port}");
+        logger.LogInformation($"Redis server started. Context: {ctx}");
         
         // Begin accepting connections
         while (true)
@@ -24,12 +24,25 @@ public class Server(ILogger<Server> logger, Context ctx)
 
     private async Task RespondAsync(TcpClient client)
     {
-        using (client)
+        var stream = client.GetStream();
+        var buffer = new byte[1024];
+
+        try
         {
-            var stream = client.GetStream();
-            logger.LogInformation($"Sending pong response to client: {client.Client.RemoteEndPoint}");
-            var msg = "+PONG\r\n"u8.ToArray();
-            await stream.WriteAsync(msg);
+            while (true)
+            {
+                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                if (bytesRead == 0) break;
+                logger.LogInformation($"Received bytes: {bytesRead}");
+                await stream.WriteAsync("+PONG\r\n"u8.ToArray());
+            }
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e.Message);
+        }
+        finally
+        {
             client.Close();
         }
     }
