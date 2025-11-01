@@ -1,7 +1,10 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
+using codecrafters_redis.resp;
 using Microsoft.Extensions.Logging;
+using Encoder = System.Text.Encoder;
 
 namespace codecrafters_redis.redis_server;
 
@@ -26,15 +29,21 @@ public class Server(ILogger<Server> logger, Context ctx)
     {
         var stream = client.GetStream();
         var buffer = new byte[1024];
-
+        var requestData = new List<byte>();
         try
         {
             while (true)
             {
                 var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
                 if (bytesRead == 0) break;
-                logger.LogInformation($"Received bytes: {bytesRead}");
-                await stream.WriteAsync("+PONG\r\n"u8.ToArray());
+                requestData.AddRange(buffer.Take(bytesRead));
+                if (!Parser.TryParse(CollectionsMarshal.AsSpan(requestData), out var consumed, out var request)) continue;
+                logger.LogInformation($"Received request {request} from client {client.Client.RemoteEndPoint}");
+                // Remove the consumed data
+                requestData.RemoveRange(0, consumed);
+                var response = GenerateResponse(request);
+                logger.LogInformation($"Sending response of length {response.Length} to client {client.Client.RemoteEndPoint}");
+                await stream.WriteAsync(response);
             }
         }
         catch (Exception e)
@@ -45,5 +54,15 @@ public class Server(ILogger<Server> logger, Context ctx)
         {
             client.Close();
         }
+    }
+
+    private byte[] GenerateResponse(Request request)
+    {
+        return request switch
+        {
+            Ping _ => RespEncoder.Pong(),
+            Echo echo => RespEncoder.BulkString(echo.Msg),
+            _ => throw new ArgumentOutOfRangeException()
+        };
     }
 }

@@ -1,5 +1,4 @@
-﻿using System.Runtime.InteropServices.ComTypes;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
 namespace codecrafters_redis;
@@ -13,6 +12,7 @@ public static class RedisLogger
         Factory = LoggerFactory.Create(builder =>
         {
             builder
+                // Log to console
                 .AddSimpleConsole(opts =>
                     {
                         opts.IncludeScopes = false;
@@ -21,8 +21,9 @@ public static class RedisLogger
                         opts.SingleLine = true;
                     }
                 
-                ) // Log to console
-                .SetMinimumLevel(LogLevel.Debug); // Set minimum log level
+                ) 
+                // Set minimum log level
+                .SetMinimumLevel(LogLevel.Debug); 
         });
     }
     
