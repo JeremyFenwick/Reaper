@@ -7,7 +7,8 @@ namespace codecrafters_redis.data_structures;
 public class KeyValueStore
 {
     private readonly Channel<Request> _requestQueue = Channel.CreateUnbounded<Request>();
-    private readonly Dictionary<string, string> _dataStore = new();
+    private readonly Dictionary<string, KvEntry> _dataStore = new();
+    private record KvEntry(string Value, long ExpiryTime = 0);
     private readonly ILogger<KeyValueStore> _logger;
 
     public KeyValueStore(ILogger<KeyValueStore> logger)
@@ -40,12 +41,10 @@ public class KeyValueStore
                 switch (request)
                 {
                     case Set set:
-                        _dataStore[set.Key] = set.Value;
-                        set.Tcs.SetResult(true);
+                        HandleSet(set);
                         break; 
                     case Get get:
-                        _dataStore.TryGetValue(get.Key, out var value);
-                        get.Tcs.SetResult(value);
+                        HandleGet(get);
                         break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
@@ -67,5 +66,41 @@ public class KeyValueStore
             }
  
         }
+    }
+
+    private void HandleSet(Set set)
+    {
+        var expiryTime = set.ExpiryMs == 0
+            ? 0
+            : set.ExpiryMs + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var newEntry = new KvEntry(set.Value, expiryTime);
+        _logger.LogInformation("Creating new entry {newEntry}", newEntry);
+        _dataStore[set.Key] = newEntry;
+        set.Tcs.SetResult(true);
+    }
+
+    private void HandleGet(Get get)
+    {
+        _dataStore.TryGetValue(get.Key, out var entry);
+        // Case where we have a valid entry
+        if (entry != null && LiveEntry(get.Key, entry))
+        {
+            _logger.LogInformation("Found {entry} from {get}", entry, get);
+            get.Tcs.SetResult(entry.Value);
+        }
+        else
+        {
+            _logger.LogInformation("Failed to find entry for {get}", get);
+            get.Tcs.SetResult(null);
+        }
+    }
+
+    private bool LiveEntry(string key, KvEntry entry)
+    {
+        if (entry.ExpiryTime == 0 || entry.ExpiryTime > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return true;
+        // Remove the dead value
+        _logger.LogInformation("Found dead {entry}. Removing.", entry);
+        _dataStore.Remove(key);
+        return false;
     }
 }

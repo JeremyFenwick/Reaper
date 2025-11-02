@@ -1,17 +1,15 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text;
 using codecrafters_redis.data_structures;
 using codecrafters_redis.resp;
 using Microsoft.Extensions.Logging;
-using Encoder = System.Text.Encoder;
 
 namespace codecrafters_redis.redis_server;
 
 public class Server(ILogger<Server> logger, Context ctx)
 {
-    private KeyValueStore store = new KeyValueStore(RedisLogger.CreateLogger<KeyValueStore>());
+    private readonly KeyValueStore _store = new KeyValueStore(RedisLogger.CreateLogger<KeyValueStore>());
     public void Run()
     {
         var listener = new TcpListener(IPAddress.Any, ctx.Port);
@@ -75,14 +73,14 @@ public class Server(ILogger<Server> logger, Context ctx)
     // KV STORE OPERATIONS
     private async Task<Response> HandleGet(Get get)
     {
-        var result = await store.Get(get);
+        var result = await _store.Get(get);
         if (result == null) return new NullBulkString();
         return new BulkString(result);
     }
 
     private async Task<Response> HandleSet(Set set)
     {
-        var result = await store.Set(set);
+        var result = await _store.Set(set);
         if (result) return new Ok();
         throw new ArgumentOutOfRangeException();
     }

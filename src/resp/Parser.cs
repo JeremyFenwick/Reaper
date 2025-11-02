@@ -84,8 +84,16 @@ public static class Parser
 
     private static Set BuildSet(List<string> requestData)
     {
-        if (requestData.Count != 3) throw new FormatException("Invalid RESP format");
-        return new Set(requestData[1],  requestData[2]);
+        return requestData.Count switch
+        {
+            < 3 => throw new FormatException("Invalid RESP format"),
+            // Check for EX setting 
+            > 3 when requestData[3].Equals("ex", StringComparison.CurrentCultureIgnoreCase) => 
+                new Set(requestData[1], requestData[2], int.Parse(requestData[4]) * 1000),
+            > 3 when requestData[3].Equals("px", StringComparison.CurrentCultureIgnoreCase) => 
+                new Set(requestData[1], requestData[2], int.Parse(requestData[4])),
+            _ => new Set(requestData[1], requestData[2])
+        };
     }
 
     private static EchoRequest BuildEcho(List<string> requestData)
