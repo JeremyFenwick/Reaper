@@ -52,3 +52,17 @@ public record Integer(int Number) : Response()
         return Encoding.UTF8.GetBytes($":{Number}\r\n");
     }
 }
+
+public record Array(List<string> List) : Response()
+{
+    public override byte[] ToBytes()
+    {
+        var data = new List<byte>();
+        data.AddRange(Encoding.UTF8.GetBytes($"*{List.Count}\r\n"));
+        foreach (var item in List)
+        {
+            data.AddRange(BulkString(item));
+        }
+        return data.ToArray();
+    }
+}

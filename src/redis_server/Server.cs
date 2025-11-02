@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using codecrafters_redis.data_structures;
 using codecrafters_redis.resp;
 using Microsoft.Extensions.Logging;
+using Array = codecrafters_redis.resp.Array;
 
 namespace codecrafters_redis.redis_server;
 
@@ -69,12 +70,20 @@ public class Server(ILogger<Server> logger, Context ctx)
             EchoRequest echo => new BulkString(echo.Msg),
             Get get => await HandleGet(get),
             Set set => await HandleSet(set),
-            RPush rpush => await HandleRPush(rpush),
+            RPush rPush => await HandleRPush(rPush),
+            LRange lRange => await HandleLRange(lRange),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
 
+
+
     // KV STORE OPERATIONS
+    private async Task<Response> HandleLRange(LRange lRange)
+    {
+        var result = await _store.LRange(lRange);
+        return new Array(result);
+    }
     private async Task<Response> HandleGet(Get get)
     {
         var result = await _store.Get(get);
