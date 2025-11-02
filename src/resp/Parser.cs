@@ -82,7 +82,7 @@ public static class Parser
     private static Request BuildRPush(List<string> requestData)
     {
         if (requestData.Count != 3) throw new FormatException("Invalid RESP format");
-        return new RPush(requestData[1], requestData[2]);
+        return new RPush(requestData[1], requestData[2..]);
     }
 
     private static Get BuildGet(List<string> requestData)

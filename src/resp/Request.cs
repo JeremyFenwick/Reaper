@@ -18,7 +18,7 @@ public record Get(string Key) : Request()
     public Task<string?> Task => Tcs.Task;
 }
 
-public record RPush(string Key, string Element) : Request()
+public record RPush(string Key, List<string> Elements) : Request()
 {
     public readonly TaskCompletionSource<int> Tcs = new();
     public Task<int> Task => Tcs.Task;
