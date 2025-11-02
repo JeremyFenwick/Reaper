@@ -7,8 +7,7 @@ namespace codecrafters_redis.data_structures;
 public class KeyValueStore
 {
     private readonly Channel<Request> _requestQueue = Channel.CreateUnbounded<Request>();
-    private readonly Dictionary<string, KvEntry> _dataStore = new();
-    private record KvEntry(string Value, long ExpiryTime = 0);
+    private readonly Dictionary<string, RedisObject> _dataStore = new();
     private readonly ILogger<KeyValueStore> _logger;
 
     public KeyValueStore(ILogger<KeyValueStore> logger)
@@ -20,16 +19,19 @@ public class KeyValueStore
     public Task<bool> Set(Set set)
     {
         if (_requestQueue.Writer.TryWrite(set)) return set.Task;
-        _logger.LogCritical("Failed to add SET request to queue {set}", set);
-        throw new  Exception("Failed to add SET request to queue");
-
+        throw new Exception("Failed to add SET request to queue");
     }
 
     public Task<string?> Get(Get get)
     {
         if (_requestQueue.Writer.TryWrite(get)) return get.Task;
-        _logger.LogCritical("Failed to add GET request to queue {get}", get);
         throw new Exception("Failed to get response from queue");
+    }
+
+    public Task<int> RPush(RPush rpush)
+    {
+        if (_requestQueue.Writer.TryWrite(rpush)) return rpush.Task;
+        throw new Exception("Failed to add RPush request to queue");
     }
 
     private async Task ProcessRequests()
@@ -45,6 +47,9 @@ public class KeyValueStore
                         break; 
                     case Get get:
                         HandleGet(get);
+                        break;
+                    case RPush rpush:
+                        HandleRPush(rpush);
                         break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
@@ -68,12 +73,29 @@ public class KeyValueStore
         }
     }
 
+    private void HandleRPush(RPush rpush)
+    {
+        if (_dataStore.TryGetValue(rpush.Key, out var value) && value is RedisList list)
+        {
+            list.Values.Add(rpush.Element);
+            _logger.LogInformation("Added {element} to existing list {key}", rpush.Element, rpush.Key);
+            rpush.Tcs.SetResult(list.Values.Count);
+        }
+        else
+        {
+            var newList = new List<string>() { rpush.Element };
+            _dataStore[rpush.Key] = new RedisList(newList);
+            _logger.LogInformation("New new list with {element} under {key}", rpush.Element, rpush.Key);
+            rpush.Tcs.SetResult(newList.Count);
+        }
+    }
+
     private void HandleSet(Set set)
     {
         var expiryTime = set.ExpiryMs == 0
             ? 0
             : set.ExpiryMs + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var newEntry = new KvEntry(set.Value, expiryTime);
+        var newEntry = new RedisBasicEntry(set.Value, expiryTime);
         _logger.LogInformation("Creating new entry {newEntry}", newEntry);
         _dataStore[set.Key] = newEntry;
         set.Tcs.SetResult(true);
@@ -83,10 +105,10 @@ public class KeyValueStore
     {
         _dataStore.TryGetValue(get.Key, out var entry);
         // Case where we have a valid entry
-        if (entry != null && LiveEntry(get.Key, entry))
+        if (entry is RedisBasicEntry kvEntry && LiveEntry(get.Key, kvEntry))
         {
-            _logger.LogInformation("Found {entry} from {get}", entry, get);
-            get.Tcs.SetResult(entry.Value);
+            _logger.LogInformation("Found {entry} from {get}", kvEntry, get);
+            get.Tcs.SetResult(kvEntry.Value);
         }
         else
         {
@@ -95,9 +117,9 @@ public class KeyValueStore
         }
     }
 
-    private bool LiveEntry(string key, KvEntry entry)
+    private bool LiveEntry(string key, RedisBasicEntry entry)
     {
-        if (entry.ExpiryTime == 0 || entry.ExpiryTime > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return true;
+        if (entry.ExpiryMs == 0 || entry.ExpiryMs > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return true;
         // Remove the dead value
         _logger.LogInformation("Found dead {entry}. Removing.", entry);
         _dataStore.Remove(key);

@@ -63,6 +63,8 @@ public static class Parser
         consumed += idx + 2;
         return true;
     }
+    
+    // REQUEST BUILDER
 
     private static Request BuildRequest(List<string> requestData)
     {
@@ -72,8 +74,15 @@ public static class Parser
             "echo" => BuildEcho(requestData),
             "set" => BuildSet(requestData),
             "get" => BuildGet(requestData),
+            "rpush" => BuildRPush(requestData),
             _ => throw new FormatException("Invalid RESP format")
         };
+    }
+
+    private static Request BuildRPush(List<string> requestData)
+    {
+        if (requestData.Count != 3) throw new FormatException("Invalid RESP format");
+        return new RPush(requestData[1], requestData[2]);
     }
 
     private static Get BuildGet(List<string> requestData)

@@ -17,3 +17,9 @@ public record Get(string Key) : Request()
     public readonly TaskCompletionSource<string?> Tcs = new();
     public Task<string?> Task => Tcs.Task;
 }
+
+public record RPush(string Key, string Element) : Request()
+{
+    public readonly TaskCompletionSource<int> Tcs = new();
+    public Task<int> Task => Tcs.Task;
+}

@@ -9,7 +9,7 @@ namespace codecrafters_redis.redis_server;
 
 public class Server(ILogger<Server> logger, Context ctx)
 {
-    private readonly KeyValueStore _store = new KeyValueStore(RedisLogger.CreateLogger<KeyValueStore>());
+    private readonly KeyValueStore _store = new(RedisLogger.CreateLogger<KeyValueStore>());
     public void Run()
     {
         var listener = new TcpListener(IPAddress.Any, ctx.Port);
@@ -36,13 +36,16 @@ public class Server(ILogger<Server> logger, Context ctx)
         {
             while (true)
             {
+                // Read in the bytes. If none are found the connection is closed
                 var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
                 if (bytesRead == 0) break;
+                // Parse the request
                 requestData.AddRange(buffer.Take(bytesRead));
                 if (!Parser.TryParse(CollectionsMarshal.AsSpan(requestData), out var consumed, out var request)) continue;
                 logger.LogInformation($"Received request {request} from client {client.Client.RemoteEndPoint}");
                 // Remove the consumed data
                 requestData.RemoveRange(0, consumed);
+                // Send the response
                 var response = await GenerateResponse(request);
                 logger.LogInformation($"Sending response {response} to client {client.Client.RemoteEndPoint}");
                 await stream.WriteAsync(response.ToBytes());
@@ -66,10 +69,11 @@ public class Server(ILogger<Server> logger, Context ctx)
             EchoRequest echo => new BulkString(echo.Msg),
             Get get => await HandleGet(get),
             Set set => await HandleSet(set),
+            RPush rpush => await HandleRPush(rpush),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
-    
+
     // KV STORE OPERATIONS
     private async Task<Response> HandleGet(Get get)
     {
@@ -78,10 +82,16 @@ public class Server(ILogger<Server> logger, Context ctx)
         return new BulkString(result);
     }
 
-    private async Task<Response> HandleSet(Set set)
+    private async Task<Ok> HandleSet(Set set)
     {
         var result = await _store.Set(set);
         if (result) return new Ok();
         throw new ArgumentOutOfRangeException();
+    }
+    
+    private async Task<Integer> HandleRPush(RPush rpush)
+    {
+        var result = await _store.RPush(rpush);
+        return new Integer(result);
     }
 }
