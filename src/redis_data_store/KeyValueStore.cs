@@ -78,13 +78,13 @@ public class KeyValueStore
         if (_dataStore.TryGetValue(rpush.Key, out var value) && value is RedisList list)
         {
             list.Values.AddRange(rpush.Elements);
-            _logger.LogInformation("Added {element} to existing list {key}", rpush.Elements, rpush.Key);
+            _logger.LogInformation("Added {elements} to existing list {key}", rpush.Elements, rpush.Key);
             rpush.Tcs.SetResult(list.Values.Count);
         }
         else
         {
             _dataStore[rpush.Key] = new RedisList(rpush.Elements);
-            _logger.LogInformation("New new list with {element} under {key}", rpush.Elements, rpush.Key);
+            _logger.LogInformation("New new list with {elements} under {key}", rpush.Elements, rpush.Key);
             rpush.Tcs.SetResult(rpush.Elements.Count);
         }
     }
