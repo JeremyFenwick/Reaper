@@ -57,7 +57,7 @@ public class KeyValueStore
                     case RPush rPush:
                         HandleRPush(rPush);
                         break;
-                    case resp.LRange lRange:
+                    case LRange lRange:
                         HandleLRange(lRange);
                         break;
                     default:
@@ -90,6 +90,8 @@ public class KeyValueStore
 
         List<string> SafeSlice(List<string> list, int start, int end)
         {
+            if (start < 0) start = list.Count - start;
+            if (end < 0) end = list.Count - end;
             return list.Skip(start).Take(end - start).ToList();
         }
     }
