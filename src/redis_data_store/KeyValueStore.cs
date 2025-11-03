@@ -85,13 +85,18 @@ public class KeyValueStore
         if (!_dataStore.TryGetValue(lRange.Key, out var value) || value is not RedisList redistList) 
             lRange.TaskSource.SetResult([]);
         else
-            lRange.TaskSource.SetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End + 1));
+            lRange.TaskSource.SetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End));
         return;
 
         List<string> SafeSlice(List<string> list, int start, int end)
         {
             if (start < 0) start = list.Count + start;
             if (end < 0) end = list.Count + end;
+            
+            // Clamp both start and end
+            start = Math.Max(0, start);
+            end = Math.Min(list.Count - 1, end);
+            
             return list.Skip(start).Take(end - start).ToList();
         }
     }
