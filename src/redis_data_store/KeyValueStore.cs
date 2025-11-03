@@ -97,7 +97,7 @@ public class KeyValueStore
             start = Math.Max(0, start);
             end = Math.Min(list.Count - 1, end);
             
-            return list.Skip(start).Take(end - start).ToList();
+            return list.Skip(start).Take(end - start + 1).ToList();
         }
     }
 
