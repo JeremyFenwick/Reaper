@@ -88,8 +88,9 @@ public static class Parser
 
     private static Request BuildLPop(List<string> requestData)
     {
-        if (requestData.Count != 2) throw new FormatException("Invalid RESP format");
-        return new LPop(requestData[1]);
+        if (requestData.Count is not (2 or 3)) throw new FormatException("Invalid RESP format");
+        if (requestData.Count == 2) return new LPop(requestData[1]);
+        return new LPop(requestData[1], int.Parse(requestData[2]));
     }
 
     private static LLen BuildLLen(List<string> requestData)

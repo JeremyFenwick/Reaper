@@ -73,9 +73,9 @@ public record LLen(string Key) : Request(), IWithTaskSource
     }
 }
 
-public record LPop(string Key) : Request(), IWithTaskSource
+public record LPop(string Key, int Number = 1) : Request(), IWithTaskSource
 {
-    public TaskCompletionSource<string?> TaskSource { get; } = new();
+    public TaskCompletionSource<List<string>> TaskSource { get; } = new();
 
     public void SetException(Exception exception)
     {

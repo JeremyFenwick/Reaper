@@ -86,8 +86,12 @@ public class Server(ILogger<Server> logger, Context ctx)
     private async Task<Response> HandleLPop(LPop pop)
     {
         var result = await _store.LPop(pop);
-        if (result == null) return new NullBulkString();
-        return new BulkString(result);
+        return result.Count switch
+        {
+            0 => new NullBulkString(),
+            1 => new BulkString(result.First()),
+            _ => new Array(result)
+        };
     }
 
     private async Task<Response> HandleLLen(LLen len)

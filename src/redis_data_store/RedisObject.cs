@@ -1,4 +1,4 @@
-﻿namespace codecrafters_redis.data_structures;
+﻿namespace codecrafters_redis.redis_data_store;
 
 public record RedisObject();
 

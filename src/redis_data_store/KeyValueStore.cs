@@ -1,4 +1,5 @@
 ﻿using System.Threading.Channels;
+using codecrafters_redis.redis_data_store;
 using codecrafters_redis.resp;
 using Microsoft.Extensions.Logging;
 
@@ -53,7 +54,7 @@ public class KeyValueStore
         throw new Exception("Failed to add LLen request to queue");
     }
 
-    public Task<string?> LPop(LPop pop)
+    public Task<List<string>> LPop(LPop pop)
     {
         if (_requestQueue.Writer.TryWrite(pop)) return pop.TaskSource.Task;
         throw new Exception("Failed to add LPop request to queue");
@@ -111,13 +112,19 @@ public class KeyValueStore
     {
         if (_dataStore.TryGetValue(pop.Key, out var value) && value is RedisList list)
         {
-            var popped = list.Values.FirstOrDefault();
-            list.Values.RemoveFirst();
-            pop.TaskSource.SetResult(popped);
+            var result = new List<string>();
+            while (list.Values.Count > 0 && result.Count < pop.Number)
+            {
+                var popped = list.Values.First();
+                list.Values.RemoveFirst();
+                result.Add(popped);
+            }
+
+            pop.TaskSource.SetResult(result);
         }
         else
         {
-            pop.TaskSource.SetResult(null);
+            pop.TaskSource.SetResult([]);
         }
     }
 
