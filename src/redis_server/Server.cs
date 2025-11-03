@@ -11,12 +11,13 @@ namespace codecrafters_redis.redis_server;
 public class Server(ILogger<Server> logger, Context ctx)
 {
     private readonly KeyValueStore _store = new(RedisLogger.CreateLogger<KeyValueStore>());
+
     public void Run()
     {
         var listener = new TcpListener(IPAddress.Any, ctx.Port);
         listener.Start();
         logger.LogInformation($"Redis server started. {ctx}");
-        
+
         // Begin accepting connections
         while (true)
         {
@@ -25,7 +26,7 @@ public class Server(ILogger<Server> logger, Context ctx)
             Task.Run(() => RespondAsync(client));
         }
     }
-    
+
     // CLIENT HANDLING
 
     private async Task RespondAsync(TcpClient client)
@@ -42,7 +43,8 @@ public class Server(ILogger<Server> logger, Context ctx)
                 if (bytesRead == 0) break;
                 // Parse the request
                 requestData.AddRange(buffer.Take(bytesRead));
-                if (!Parser.TryParse(CollectionsMarshal.AsSpan(requestData), out var consumed, out var request)) continue;
+                if (!Parser.TryParse(CollectionsMarshal.AsSpan(requestData), out var consumed, out var request))
+                    continue;
                 logger.LogInformation($"Received request {request} from client {client.Client.RemoteEndPoint}");
                 // Remove the consumed data
                 requestData.RemoveRange(0, consumed);
@@ -73,16 +75,25 @@ public class Server(ILogger<Server> logger, Context ctx)
             RPush rPush => await HandleRPush(rPush),
             LRange lRange => await HandleLRange(lRange),
             LPush lPush => await HandleLPush(lPush),
+            LLen len => await HandleLLen(len),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
 
     // KV STORE OPERATIONS
+
+    private async Task<Response> HandleLLen(LLen len)
+    {
+        var result = await _store.LLen(len);
+        return new Integer(result);
+    }
+
     private async Task<Response> HandleLRange(LRange lRange)
     {
         var result = await _store.LRange(lRange);
         return new Array(result);
     }
+
     private async Task<Response> HandleGet(Get get)
     {
         var result = await _store.Get(get);
@@ -96,13 +107,13 @@ public class Server(ILogger<Server> logger, Context ctx)
         if (result) return new Ok();
         throw new ArgumentOutOfRangeException();
     }
-    
+
     private async Task<Integer> HandleRPush(RPush rPush)
     {
         var result = await _store.RPush(rPush);
         return new Integer(result);
     }
-    
+
     private async Task<Integer> HandleLPush(LPush lPush)
     {
         var result = await _store.LPush(lPush);

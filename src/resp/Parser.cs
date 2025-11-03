@@ -22,12 +22,13 @@ public static class Parser
             var span = data[consumed..];
             if (span.Length == 0 || span[0] != (byte)'$')
                 throw new FormatException("Expected bulk string type");
-            consumed++; 
+            consumed++;
             // Get the data itself
             if (!TryParseInt(data[consumed..], ref consumed, out var length)) return false;
             if (!TryParseString(data[consumed..], length, ref consumed, out var str)) return false;
             result.Add(str);
         }
+
         // Return the result
         request = BuildRequest(result);
         return true;
@@ -36,11 +37,11 @@ public static class Parser
     private static bool TryParseString(ReadOnlySpan<byte> data, int length, ref int consumed, out string value)
     {
         value = "";
-        
+
         if (data.Length < length + 2) return false;
         if (data[length] != '\r' || data[length + 1] != '\n') throw new FormatException("Invalid string format");
         value = Encoding.UTF8.GetString(data[..length]);
-        
+
         consumed += length + 2;
         return true;
     }
@@ -49,10 +50,12 @@ public static class Parser
     {
         // find line ending
         var idx = data.IndexOf((byte)'\r');
-        if (idx < 0 || idx + 1 >= data.Length) {
+        if (idx < 0 || idx + 1 >= data.Length)
+        {
             value = 0;
-            return false;   // incomplete
+            return false; // incomplete
         }
+
         if (data[idx + 1] != (byte)'\n')
             throw new FormatException("Expected \\n after \\r in RESP integer.");
 
@@ -63,7 +66,7 @@ public static class Parser
         consumed += idx + 2;
         return true;
     }
-    
+
     // REQUEST BUILDER
 
     private static Request BuildRequest(List<string> requestData)
@@ -77,9 +80,17 @@ public static class Parser
             "rpush" => BuildRPush(requestData),
             "lrange" => BuildLRange(requestData),
             "lpush" => BuildLPush(requestData),
+            "llen" => BuildLLen(requestData),
             _ => throw new FormatException("Invalid RESP format")
         };
     }
+
+    private static LLen BuildLLen(List<string> requestData)
+    {
+        if (requestData.Count != 2) throw new FormatException("Invalid RESP format");
+        return new LLen(requestData[1]);
+    }
+
 
     private static LPush BuildLPush(List<string> requestData)
     {
@@ -89,7 +100,7 @@ public static class Parser
 
     private static LRange BuildLRange(List<string> requestData)
     {
-        if (requestData.Count != 4) throw new  FormatException("Invalid RESP format");
+        if (requestData.Count != 4) throw new FormatException("Invalid RESP format");
         var start = int.Parse(requestData[2]);
         var end = int.Parse(requestData[3]);
         return new LRange(requestData[1], start, end);
@@ -113,9 +124,9 @@ public static class Parser
         {
             < 3 => throw new FormatException("Invalid RESP format"),
             // Check for EX setting 
-            > 3 when requestData[3].Equals("ex", StringComparison.CurrentCultureIgnoreCase) => 
+            > 3 when requestData[3].Equals("ex", StringComparison.CurrentCultureIgnoreCase) =>
                 new Set(requestData[1], requestData[2], int.Parse(requestData[4]) * 1000),
-            > 3 when requestData[3].Equals("px", StringComparison.CurrentCultureIgnoreCase) => 
+            > 3 when requestData[3].Equals("px", StringComparison.CurrentCultureIgnoreCase) =>
                 new Set(requestData[1], requestData[2], int.Parse(requestData[4])),
             _ => new Set(requestData[1], requestData[2])
         };

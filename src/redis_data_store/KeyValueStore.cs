@@ -16,6 +16,7 @@ public class KeyValueStore
         Task.Run(ProcessRequests);
     }
 
+    // PUBLIC API
     public Task<bool> Set(Set set)
     {
         if (_requestQueue.Writer.TryWrite(set)) return set.TaskSource.Task;
@@ -39,24 +40,30 @@ public class KeyValueStore
         if (_requestQueue.Writer.TryWrite(range)) return range.TaskSource.Task;
         throw new Exception("Failed to add RPush request to queue");
     }
-    
+
     public Task<int> LPush(LPush lPush)
     {
         if (_requestQueue.Writer.TryWrite(lPush)) return lPush.TaskSource.Task;
         throw new Exception("Failed to add RPush request to queue");
     }
 
+    public Task<int> LLen(LLen len)
+    {
+        if (_requestQueue.Writer.TryWrite(len)) return len.TaskSource.Task;
+        throw new Exception("Failed to add RPush request to queue");
+    }
+
+    // INTERNAL REQUEST PROCESSING
     private async Task ProcessRequests()
     {
         await foreach (var request in _requestQueue.Reader.ReadAllAsync())
-        {
             try
             {
                 switch (request)
                 {
                     case Set set:
                         HandleSet(set);
-                        break; 
+                        break;
                     case Get get:
                         HandleGet(get);
                         break;
@@ -68,6 +75,9 @@ public class KeyValueStore
                         break;
                     case LPush lPush:
                         HandleLPush(lPush);
+                        break;
+                    case LLen len:
+                        HandleLLen(len);
                         break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
@@ -86,17 +96,21 @@ public class KeyValueStore
                         break;
                 }
             }
-        }
+    }
+
+    private void HandleLLen(LLen len)
+    {
+        if (_dataStore.TryGetValue(len.Key, out var value) && value is RedisList list)
+            len.TaskSource.SetResult(list.Values.Count);
+        else
+            len.TaskSource.SetResult(0);
     }
 
     private void HandleLPush(LPush lPush)
     {
         if (_dataStore.TryGetValue(lPush.Key, out var value) && value is RedisList list)
         {
-            foreach (var element in  lPush.Elements)
-            {
-                list.Values.Insert(0, element);
-            }
+            foreach (var element in lPush.Elements) list.Values.Insert(0, element);
             lPush.TaskSource.SetResult(list.Values.Count);
         }
         else
@@ -106,12 +120,11 @@ public class KeyValueStore
             _logger.LogInformation("New list with {elements} under {key}", lPush.Elements, lPush.Key);
             lPush.TaskSource.SetResult(lPush.Elements.Count);
         }
-
     }
 
     private void HandleLRange(LRange lRange)
     {
-        if (!_dataStore.TryGetValue(lRange.Key, out var value) || value is not RedisList redistList) 
+        if (!_dataStore.TryGetValue(lRange.Key, out var value) || value is not RedisList redistList)
             lRange.TaskSource.SetResult([]);
         else
             lRange.TaskSource.SetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End));
@@ -121,7 +134,7 @@ public class KeyValueStore
         {
             if (start < 0) start = list.Count + start;
             if (end < 0) end = list.Count + end;
-            
+
             // Clamp both start and end
             start = Math.Max(0, start);
             end = Math.Min(list.Count - 1, end);
@@ -146,7 +159,7 @@ public class KeyValueStore
             rPush.TaskSource.SetResult(rPush.Elements.Count);
         }
     }
-    
+
 
     private void HandleSet(Set set)
     {
@@ -183,6 +196,4 @@ public class KeyValueStore
         _dataStore.Remove(key);
         return false;
     }
-    
-    
 }
