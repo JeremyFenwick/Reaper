@@ -38,19 +38,25 @@ public class KeyValueStore
     public Task<List<string>> LRange(LRange range)
     {
         if (_requestQueue.Writer.TryWrite(range)) return range.TaskSource.Task;
-        throw new Exception("Failed to add RPush request to queue");
+        throw new Exception("Failed to add LRange request to queue");
     }
 
     public Task<int> LPush(LPush lPush)
     {
         if (_requestQueue.Writer.TryWrite(lPush)) return lPush.TaskSource.Task;
-        throw new Exception("Failed to add RPush request to queue");
+        throw new Exception("Failed to add LPush request to queue");
     }
 
     public Task<int> LLen(LLen len)
     {
         if (_requestQueue.Writer.TryWrite(len)) return len.TaskSource.Task;
-        throw new Exception("Failed to add RPush request to queue");
+        throw new Exception("Failed to add LLen request to queue");
+    }
+
+    public Task<string?> LPop(LPop pop)
+    {
+        if (_requestQueue.Writer.TryWrite(pop)) return pop.TaskSource.Task;
+        throw new Exception("Failed to add LPop request to queue");
     }
 
     // INTERNAL REQUEST PROCESSING
@@ -79,6 +85,9 @@ public class KeyValueStore
                     case LLen len:
                         HandleLLen(len);
                         break;
+                    case LPop pop:
+                        HandleLPop(pop);
+                        break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
                         break;
@@ -98,6 +107,20 @@ public class KeyValueStore
             }
     }
 
+    private void HandleLPop(LPop pop)
+    {
+        if (_dataStore.TryGetValue(pop.Key, out var value) && value is RedisList list)
+        {
+            var popped = list.Values.FirstOrDefault();
+            list.Values.RemoveFirst();
+            pop.TaskSource.SetResult(popped);
+        }
+        else
+        {
+            pop.TaskSource.SetResult(null);
+        }
+    }
+
     private void HandleLLen(LLen len)
     {
         if (_dataStore.TryGetValue(len.Key, out var value) && value is RedisList list)
@@ -110,13 +133,13 @@ public class KeyValueStore
     {
         if (_dataStore.TryGetValue(lPush.Key, out var value) && value is RedisList list)
         {
-            foreach (var element in lPush.Elements) list.Values.Insert(0, element);
+            foreach (var element in lPush.Elements) list.Values.AddFirst(element);
             lPush.TaskSource.SetResult(list.Values.Count);
         }
         else
         {
             lPush.Elements.Reverse();
-            _dataStore[lPush.Key] = new RedisList(lPush.Elements);
+            _dataStore[lPush.Key] = new RedisList(new LinkedList<string>(lPush.Elements));
             _logger.LogInformation("New list with {elements} under {key}", lPush.Elements, lPush.Key);
             lPush.TaskSource.SetResult(lPush.Elements.Count);
         }
@@ -130,7 +153,7 @@ public class KeyValueStore
             lRange.TaskSource.SetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End));
         return;
 
-        List<string> SafeSlice(List<string> list, int start, int end)
+        List<string> SafeSlice(LinkedList<string> list, int start, int end)
         {
             if (start < 0) start = list.Count + start;
             if (end < 0) end = list.Count + end;
@@ -139,8 +162,17 @@ public class KeyValueStore
             start = Math.Max(0, start);
             end = Math.Min(list.Count - 1, end);
 
-            // If the start is greater than the end return nothing
-            return start > end ? [] : list.GetRange(start, end - start + 1);
+            if (start > end) return [];
+
+            var result = new List<string>(end - start + 1);
+            var index = 0;
+
+            // iterate linked list until we reach `start`
+            for (var node = list.First; node != null && index <= end; node = node.Next, index++)
+                if (index >= start)
+                    result.Add(node.Value);
+
+            return result;
         }
     }
 
@@ -148,13 +180,13 @@ public class KeyValueStore
     {
         if (_dataStore.TryGetValue(rPush.Key, out var value) && value is RedisList list)
         {
-            list.Values.AddRange(rPush.Elements);
+            foreach (var element in rPush.Elements) list.Values.AddLast(element);
             _logger.LogInformation("Added {elements} to existing list {key}", rPush.Elements, rPush.Key);
             rPush.TaskSource.SetResult(list.Values.Count);
         }
         else
         {
-            _dataStore[rPush.Key] = new RedisList(rPush.Elements);
+            _dataStore[rPush.Key] = new RedisList(new LinkedList<string>(rPush.Elements));
             _logger.LogInformation("New list with {elements} under {key}", rPush.Elements, rPush.Key);
             rPush.TaskSource.SetResult(rPush.Elements.Count);
         }

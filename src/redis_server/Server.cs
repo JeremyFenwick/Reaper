@@ -76,11 +76,19 @@ public class Server(ILogger<Server> logger, Context ctx)
             LRange lRange => await HandleLRange(lRange),
             LPush lPush => await HandleLPush(lPush),
             LLen len => await HandleLLen(len),
+            LPop pop => await HandleLPop(pop),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
 
+
     // KV STORE OPERATIONS
+    private async Task<Response> HandleLPop(LPop pop)
+    {
+        var result = await _store.LPop(pop);
+        if (result == null) return new NullBulkString();
+        return new BulkString(result);
+    }
 
     private async Task<Response> HandleLLen(LLen len)
     {

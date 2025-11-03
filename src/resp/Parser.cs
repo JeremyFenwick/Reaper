@@ -81,8 +81,15 @@ public static class Parser
             "lrange" => BuildLRange(requestData),
             "lpush" => BuildLPush(requestData),
             "llen" => BuildLLen(requestData),
+            "lpop" => BuildLPop(requestData),
             _ => throw new FormatException("Invalid RESP format")
         };
+    }
+
+    private static Request BuildLPop(List<string> requestData)
+    {
+        if (requestData.Count != 2) throw new FormatException("Invalid RESP format");
+        return new LPop(requestData[1]);
     }
 
     private static LLen BuildLLen(List<string> requestData)

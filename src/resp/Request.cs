@@ -72,3 +72,13 @@ public record LLen(string Key) : Request(), IWithTaskSource
         TaskSource.TrySetException(exception);
     }
 }
+
+public record LPop(string Key) : Request(), IWithTaskSource
+{
+    public TaskCompletionSource<string?> TaskSource { get; } = new();
+
+    public void SetException(Exception exception)
+    {
+        TaskSource.TrySetException(exception);
+    }
+}
