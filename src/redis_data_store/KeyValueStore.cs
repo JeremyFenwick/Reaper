@@ -96,8 +96,9 @@ public class KeyValueStore
             // Clamp both start and end
             start = Math.Max(0, start);
             end = Math.Min(list.Count - 1, end);
-            
-            return list.Skip(start).Take(end - start + 1).ToList();
+
+            // If the start is greater than the end
+            return start > end ? [] : list.GetRange(start, end - start + 1);
         }
     }
 
