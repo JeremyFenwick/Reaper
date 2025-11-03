@@ -72,11 +72,10 @@ public class Server(ILogger<Server> logger, Context ctx)
             Set set => await HandleSet(set),
             RPush rPush => await HandleRPush(rPush),
             LRange lRange => await HandleLRange(lRange),
+            LPush lPush => await HandleLPush(lPush),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
-
-
 
     // KV STORE OPERATIONS
     private async Task<Response> HandleLRange(LRange lRange)
@@ -98,9 +97,15 @@ public class Server(ILogger<Server> logger, Context ctx)
         throw new ArgumentOutOfRangeException();
     }
     
-    private async Task<Integer> HandleRPush(RPush rpush)
+    private async Task<Integer> HandleRPush(RPush rPush)
     {
-        var result = await _store.RPush(rpush);
+        var result = await _store.RPush(rPush);
+        return new Integer(result);
+    }
+    
+    private async Task<Integer> HandleLPush(LPush lPush)
+    {
+        var result = await _store.LPush(lPush);
         return new Integer(result);
     }
 }

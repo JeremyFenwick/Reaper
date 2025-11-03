@@ -39,6 +39,12 @@ public class KeyValueStore
         if (_requestQueue.Writer.TryWrite(range)) return range.TaskSource.Task;
         throw new Exception("Failed to add RPush request to queue");
     }
+    
+    public Task<int> LPush(LPush lPush)
+    {
+        if (_requestQueue.Writer.TryWrite(lPush)) return lPush.TaskSource.Task;
+        throw new Exception("Failed to add RPush request to queue");
+    }
 
     private async Task ProcessRequests()
     {
@@ -60,6 +66,9 @@ public class KeyValueStore
                     case LRange lRange:
                         HandleLRange(lRange);
                         break;
+                    case LPush lPush:
+                        HandleLPush(lPush);
+                        break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
                         break;
@@ -80,6 +89,26 @@ public class KeyValueStore
         }
     }
 
+    private void HandleLPush(LPush lPush)
+    {
+        if (_dataStore.TryGetValue(lPush.Key, out var value) && value is RedisList list)
+        {
+            foreach (var element in  lPush.Elements)
+            {
+                list.Values.Insert(0, element);
+            }
+            lPush.TaskSource.SetResult(list.Values.Count);
+        }
+        else
+        {
+            lPush.Elements.Reverse();
+            _dataStore[lPush.Key] = new RedisList(lPush.Elements);
+            _logger.LogInformation("New list with {elements} under {key}", lPush.Elements, lPush.Key);
+            lPush.TaskSource.SetResult(lPush.Elements.Count);
+        }
+
+    }
+
     private void HandleLRange(LRange lRange)
     {
         if (!_dataStore.TryGetValue(lRange.Key, out var value) || value is not RedisList redistList) 
@@ -97,7 +126,7 @@ public class KeyValueStore
             start = Math.Max(0, start);
             end = Math.Min(list.Count - 1, end);
 
-            // If the start is greater than the end
+            // If the start is greater than the end return nothing
             return start > end ? [] : list.GetRange(start, end - start + 1);
         }
     }

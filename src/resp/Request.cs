@@ -26,12 +26,17 @@ public record RPush(string Key, List<string> Elements) : Request(),  IWithTaskSo
 {
     public TaskCompletionSource<int> TaskSource { get; } = new();
     public void SetException(Exception exception) => TaskSource.TrySetException(exception);
-
 }
 
 public record LRange(string Key, int Start, int End) : Request(),  IWithTaskSource
 {
     public TaskCompletionSource<List<string>> TaskSource { get; } = new();
+    public void SetException(Exception exception) => TaskSource.TrySetException(exception);
+}
+
+public record LPush(string Key, List<string> Elements) : Request(),  IWithTaskSource
+{
+    public TaskCompletionSource<int> TaskSource { get; } = new();
     public void SetException(Exception exception) => TaskSource.TrySetException(exception);
 
 }

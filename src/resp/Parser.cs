@@ -76,11 +76,18 @@ public static class Parser
             "get" => BuildGet(requestData),
             "rpush" => BuildRPush(requestData),
             "lrange" => BuildLRange(requestData),
+            "lpush" => BuildLPush(requestData),
             _ => throw new FormatException("Invalid RESP format")
         };
     }
 
-    private static Request BuildLRange(List<string> requestData)
+    private static LPush BuildLPush(List<string> requestData)
+    {
+        if (requestData.Count < 3) throw new FormatException("Invalid RESP format");
+        return new LPush(requestData[1], requestData[2..]);
+    }
+
+    private static LRange BuildLRange(List<string> requestData)
     {
         if (requestData.Count != 4) throw new  FormatException("Invalid RESP format");
         var start = int.Parse(requestData[2]);
@@ -88,7 +95,7 @@ public static class Parser
         return new LRange(requestData[1], start, end);
     }
 
-    private static Request BuildRPush(List<string> requestData)
+    private static RPush BuildRPush(List<string> requestData)
     {
         if (requestData.Count < 3) throw new FormatException("Invalid RESP format");
         return new RPush(requestData[1], requestData[2..]);
