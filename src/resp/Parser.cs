@@ -83,7 +83,7 @@ public static class Parser
             "llen" => BuildLLen(requestData),
             "lpop" => BuildLPop(requestData),
             "blpop" => BuildBlPop(requestData),
-            _ => throw new FormatException("Invalid RESP format")
+            _ => throw new FormatException($"Unknown RESP format, first word {requestData[0]}")
         };
     }
 
