@@ -78,8 +78,17 @@ public class Server(ILogger<Server> logger, Context ctx)
             LLen len => await HandleLLen(len),
             LPop pop => await HandleLPop(pop),
             BlPop blPop => await HandleBlPop(blPop),
+            GetType getType => await HandleGetType(getType),
             _ => throw new ArgumentOutOfRangeException()
         };
+    }
+
+    // KV STORE OPERATIONS
+
+    private async Task<Response> HandleGetType(GetType getType)
+    {
+        var result = await _store.Type(getType);
+        return new BulkString(result);
     }
 
     private async Task<Response> HandleBlPop(BlPop blPop)
@@ -92,8 +101,6 @@ public class Server(ILogger<Server> logger, Context ctx)
         };
     }
 
-
-    // KV STORE OPERATIONS
     private async Task<Response> HandleLPop(LPop pop)
     {
         var result = await _store.LPop(pop);

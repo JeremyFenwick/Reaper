@@ -1,5 +1,6 @@
 ﻿namespace codecrafters_redis.resp;
 
+// REQUEST DEFINITIONS
 public abstract record Request();
 
 public interface IWithTaskSource
@@ -92,6 +93,16 @@ public record LPop(string Key, int Number = 1) : Request(), IWithTaskSource, IHa
 public record BlPop(string Key, int TimeoutMs = 0) : Request(), IWithTaskSource, IHasKey
 {
     public TaskCompletionSource<string?> TaskSource { get; } = new();
+
+    public void SetException(Exception exception)
+    {
+        TaskSource.TrySetException(exception);
+    }
+}
+
+public record GetType(string Key) : Request(), IWithTaskSource, IHasKey
+{
+    public TaskCompletionSource<string> TaskSource { get; } = new();
 
     public void SetException(Exception exception)
     {

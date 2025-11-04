@@ -11,7 +11,7 @@ public class KeyValueStore
     private readonly Dictionary<string, LinkedList<Request>> _blockedRequests = new();
     private readonly Dictionary<string, RedisObject> _dataStore = new();
     private readonly ILogger<KeyValueStore> _logger;
-    private int _counter = 0;
+    private int _requestCounter;
 
     public KeyValueStore(ILogger<KeyValueStore> logger)
     {
@@ -76,13 +76,19 @@ public class KeyValueStore
         throw new Exception("Failed to add BlPop request to queue");
     }
 
+    public Task<string> Type(GetType getType)
+    {
+        if (_requestQueue.Writer.TryWrite(getType)) return getType.TaskSource.Task;
+        throw new Exception("Failed to add LPop request to queue");
+    }
+
     // INTERNAL REQUEST PROCESSING
     private async Task ProcessRequests()
     {
         await foreach (var request in _requestQueue.Reader.ReadAllAsync())
             try
             {
-                _counter++;
+                _requestCounter++;
                 _logger.LogInformation($"Processing request: {request}");
                 switch (request)
                 {
@@ -112,6 +118,9 @@ public class KeyValueStore
                             _blockedRequests.Add(blPop.Key, new LinkedList<Request>());
                         _blockedRequests[blPop.Key].AddLast(request);
                         break;
+                    case GetType getType:
+                        HandleGetType(getType);
+                        break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
                         break;
@@ -122,11 +131,11 @@ public class KeyValueStore
                 if (request is IHasKey hasKeyRequest and (resp.Set or resp.RPush or resp.LPush or resp.BlPop))
                     CheckBlockedRequests(hasKeyRequest);
 
-                if (_counter >= 10_000)
+                if (_requestCounter >= 10_000)
                 {
                     _logger.LogInformation("Cleaning blocked requests");
                     CleanBlockedRequests();
-                    _counter = 0;
+                    _requestCounter = 0;
                 }
             }
             catch (Exception e)
@@ -173,6 +182,7 @@ public class KeyValueStore
         var emptyKeys = new List<string>();
         var deadRequestCount = 0;
 
+        // Check for any dead requests and remove them
         foreach (var (key, list) in _blockedRequests)
         {
             var toRemove = new List<Request>();
@@ -187,7 +197,7 @@ public class KeyValueStore
             if (list.Count == 0) emptyKeys.Add(key);
         }
 
-        _logger.LogInformation("Removed {count} requests dead blocked reqquests", deadRequestCount);
+        _logger.LogInformation("Removed {count} requests dead blocked requests", deadRequestCount);
         foreach (var key in emptyKeys) _blockedRequests.Remove(key);
     }
 
@@ -197,7 +207,7 @@ public class KeyValueStore
         if (!_dataStore.TryGetValue(blPop.Key, out var value) || value is not RedisList list)
         {
             _logger.LogCritical(
-                "Data structure is in an impossible situation where HandleBlPop was called without {blPop.Key}",
+                "Data structure is in an impossible situation where HandleBlPop was called without {blPop.Key} available in the KV store",
                 blPop.Key);
             return;
         }
@@ -301,7 +311,7 @@ public class KeyValueStore
         var expiryTime = set.ExpiryMs == 0
             ? 0
             : set.ExpiryMs + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var newEntry = new RedisBasicEntry(set.Value, expiryTime);
+        var newEntry = new RedisString(set.Value, expiryTime);
         _dataStore[set.Key] = newEntry;
         set.TaskSource.TrySetResult(true);
     }
@@ -310,13 +320,21 @@ public class KeyValueStore
     {
         _dataStore.TryGetValue(get.Key, out var entry);
         // Case where we have a valid entry
-        if (entry is RedisBasicEntry kvEntry && LiveEntry(get.Key, kvEntry))
+        if (entry is RedisString kvEntry && LiveEntry(get.Key, kvEntry))
             get.TaskSource.TrySetResult(kvEntry.Value);
         else
             get.TaskSource.TrySetResult(null);
     }
 
-    private bool LiveEntry(string key, RedisBasicEntry entry)
+    private void HandleGetType(GetType getType)
+    {
+        if (_dataStore.TryGetValue(getType.Key, out var entry))
+            getType.TaskSource.TrySetResult(entry.Type);
+        else
+            getType.TaskSource.TrySetResult(RedisObject.NoneType);
+    }
+
+    private bool LiveEntry(string key, RedisString entry)
     {
         if (entry.ExpiryMs == 0 || entry.ExpiryMs > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return true;
         // Remove the dead value
