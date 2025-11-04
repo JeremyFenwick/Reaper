@@ -5,6 +5,8 @@ namespace codecrafters_redis.resp;
 public abstract record Response()
 {
     public abstract byte[] ToBytes();
+    protected static byte[] NullBulkString = "$-1\r\n"u8.ToArray();
+
     protected static byte[] BulkString(string msg)
     {
         return Encoding.UTF8.GetBytes($"${msg.Length}\r\n{msg}\r\n");
@@ -14,6 +16,7 @@ public abstract record Response()
 public record Pong() : Response()
 {
     public string Msg = "PONG";
+
     public override byte[] ToBytes()
     {
         return "+PONG\r\n"u8.ToArray();
@@ -23,6 +26,7 @@ public record Pong() : Response()
 public record Ok() : Response()
 {
     public string Msg = "OK";
+
     public override byte[] ToBytes()
     {
         return "+OK\r\n"u8.ToArray();
@@ -41,7 +45,7 @@ public record NullBulkString() : Response()
 {
     public override byte[] ToBytes()
     {
-        return "$-1\r\n"u8.ToArray();
+        return NullBulkString;
     }
 }
 
@@ -53,16 +57,16 @@ public record Integer(int Number) : Response()
     }
 }
 
-public record Array(List<string> List) : Response()
+public record Array(List<string?> List) : Response()
 {
     public override byte[] ToBytes()
     {
         var data = new List<byte>();
         data.AddRange(Encoding.UTF8.GetBytes($"*{List.Count}\r\n"));
         foreach (var item in List)
-        {
-            data.AddRange(BulkString(item));
-        }
+            if (item == null) data.AddRange(NullBulkString);
+            else data.AddRange(BulkString(item));
+
         return data.ToArray();
     }
 }

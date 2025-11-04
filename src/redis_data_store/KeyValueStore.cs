@@ -8,6 +8,7 @@ namespace codecrafters_redis.data_structures;
 public class KeyValueStore
 {
     private readonly Channel<Request> _requestQueue = Channel.CreateUnbounded<Request>();
+    private readonly Dictionary<string, LinkedList<Request>> _blockedRequests = new();
     private readonly Dictionary<string, RedisObject> _dataStore = new();
     private readonly ILogger<KeyValueStore> _logger;
 
@@ -60,6 +61,20 @@ public class KeyValueStore
         throw new Exception("Failed to add LPop request to queue");
     }
 
+    public Task<string?> BlPop(BlPop blPop)
+    {
+        if (_requestQueue.Writer.TryWrite(blPop))
+        {
+            // Set the timer if it exists
+            if (blPop.TimeoutMs > 0)
+                _ = Task.Delay(TimeSpan.FromMilliseconds(blPop.TimeoutMs))
+                    .ContinueWith(_ => blPop.TaskSource.TrySetResult(null));
+            return blPop.TaskSource.Task;
+        }
+
+        throw new Exception("Failed to add BlPop request to queue");
+    }
+
     // INTERNAL REQUEST PROCESSING
     private async Task ProcessRequests()
     {
@@ -89,10 +104,20 @@ public class KeyValueStore
                     case LPop pop:
                         HandleLPop(pop);
                         break;
+                    case BlPop blPop:
+                        if (!_blockedRequests.ContainsKey(blPop.Key))
+                            _blockedRequests.Add(blPop.Key, new LinkedList<Request>());
+                        _blockedRequests[blPop.Key].AddLast(request);
+                        break;
                     default:
                         _logger.LogError("Received unknown: {request}", request);
                         break;
                 }
+
+                // If we added a value a blocked request,
+                // we need to check if we can clear r
+                if (request is IHasKey hasKeyRequest and (resp.Set or resp.RPush or resp.LPush or resp.BlPop))
+                    CheckBlockedRequests(hasKeyRequest);
             }
             catch (Exception e)
             {
@@ -108,6 +133,44 @@ public class KeyValueStore
             }
     }
 
+    private void CheckBlockedRequests(IHasKey request)
+    {
+        // Guard clause, technically this should never trigger
+        if (!_dataStore.TryGetValue(request.Key, out var value) || value is not RedisList list) return;
+
+        // Check we actually have blocked requests
+        if (!_blockedRequests.TryGetValue(request.Key, out var blockedRequests)) return;
+
+        // Clear as many blocked requests as we can
+        _logger.LogInformation("Attempting to unblock requests for {key}", request.Key);
+        var completed = new List<Request>();
+        foreach (var blockedRequest in blockedRequests)
+        {
+            if (list.Values.Count == 0) break;
+            if (blockedRequest is BlPop pop) HandleBlPop(pop);
+            completed.Add(blockedRequest);
+        }
+
+        // Clear the completed requests from the blocked queue
+        _logger.LogInformation("Completed {count} requests for {key}", completed.Count, request.Key);
+        foreach (var item in completed) blockedRequests.Remove(item);
+        if (blockedRequests.Count == 0) _dataStore.Remove(request.Key);
+    }
+
+    private void HandleBlPop(BlPop blPop)
+    {
+        if (_dataStore.TryGetValue(blPop.Key, out var value) && value is RedisList list)
+        {
+            var popped = list.Values.First();
+            list.Values.RemoveFirst();
+            blPop.TaskSource.SetResult(popped);
+        }
+        else
+        {
+            blPop.TaskSource.SetResult(null);
+        }
+    }
+
     private void HandleLPop(LPop pop)
     {
         if (_dataStore.TryGetValue(pop.Key, out var value) && value is RedisList list)
@@ -120,20 +183,20 @@ public class KeyValueStore
                 result.Add(popped);
             }
 
-            pop.TaskSource.SetResult(result);
+            pop.TaskSource.TrySetResult(result);
         }
         else
         {
-            pop.TaskSource.SetResult([]);
+            pop.TaskSource.TrySetResult([]);
         }
     }
 
     private void HandleLLen(LLen len)
     {
         if (_dataStore.TryGetValue(len.Key, out var value) && value is RedisList list)
-            len.TaskSource.SetResult(list.Values.Count);
+            len.TaskSource.TrySetResult(list.Values.Count);
         else
-            len.TaskSource.SetResult(0);
+            len.TaskSource.TrySetResult(0);
     }
 
     private void HandleLPush(LPush lPush)
@@ -141,23 +204,23 @@ public class KeyValueStore
         if (_dataStore.TryGetValue(lPush.Key, out var value) && value is RedisList list)
         {
             foreach (var element in lPush.Elements) list.Values.AddFirst(element);
-            lPush.TaskSource.SetResult(list.Values.Count);
+            lPush.TaskSource.TrySetResult(list.Values.Count);
         }
         else
         {
             lPush.Elements.Reverse();
             _dataStore[lPush.Key] = new RedisList(new LinkedList<string>(lPush.Elements));
             _logger.LogInformation("New list with {elements} under {key}", lPush.Elements, lPush.Key);
-            lPush.TaskSource.SetResult(lPush.Elements.Count);
+            lPush.TaskSource.TrySetResult(lPush.Elements.Count);
         }
     }
 
     private void HandleLRange(LRange lRange)
     {
         if (!_dataStore.TryGetValue(lRange.Key, out var value) || value is not RedisList redistList)
-            lRange.TaskSource.SetResult([]);
+            lRange.TaskSource.TrySetResult([]);
         else
-            lRange.TaskSource.SetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End));
+            lRange.TaskSource.TrySetResult(SafeSlice(redistList.Values, lRange.Start, lRange.End));
         return;
 
         List<string> SafeSlice(LinkedList<string> list, int start, int end)
@@ -189,13 +252,13 @@ public class KeyValueStore
         {
             foreach (var element in rPush.Elements) list.Values.AddLast(element);
             _logger.LogInformation("Added {elements} to existing list {key}", rPush.Elements, rPush.Key);
-            rPush.TaskSource.SetResult(list.Values.Count);
+            rPush.TaskSource.TrySetResult(list.Values.Count);
         }
         else
         {
             _dataStore[rPush.Key] = new RedisList(new LinkedList<string>(rPush.Elements));
             _logger.LogInformation("New list with {elements} under {key}", rPush.Elements, rPush.Key);
-            rPush.TaskSource.SetResult(rPush.Elements.Count);
+            rPush.TaskSource.TrySetResult(rPush.Elements.Count);
         }
     }
 
@@ -208,7 +271,7 @@ public class KeyValueStore
         var newEntry = new RedisBasicEntry(set.Value, expiryTime);
         _logger.LogInformation("Creating new entry {newEntry}", newEntry);
         _dataStore[set.Key] = newEntry;
-        set.TaskSource.SetResult(true);
+        set.TaskSource.TrySetResult(true);
     }
 
     private void HandleGet(Get get)
@@ -218,12 +281,12 @@ public class KeyValueStore
         if (entry is RedisBasicEntry kvEntry && LiveEntry(get.Key, kvEntry))
         {
             _logger.LogInformation("Found {entry} from {get}", kvEntry, get);
-            get.TaskSource.SetResult(kvEntry.Value);
+            get.TaskSource.TrySetResult(kvEntry.Value);
         }
         else
         {
             _logger.LogInformation("Failed to find entry for {get}", get);
-            get.TaskSource.SetResult(null);
+            get.TaskSource.TrySetResult(null);
         }
     }
 

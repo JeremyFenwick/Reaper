@@ -77,8 +77,15 @@ public class Server(ILogger<Server> logger, Context ctx)
             LPush lPush => await HandleLPush(lPush),
             LLen len => await HandleLLen(len),
             LPop pop => await HandleLPop(pop),
+            BlPop blPop => await HandleBlPop(blPop),
             _ => throw new ArgumentOutOfRangeException()
         };
+    }
+
+    private async Task<Response> HandleBlPop(BlPop blPop)
+    {
+        var result = await _store.BlPop(blPop);
+        return new Array([blPop.Key, result]);
     }
 
 
@@ -109,8 +116,11 @@ public class Server(ILogger<Server> logger, Context ctx)
     private async Task<Response> HandleGet(Get get)
     {
         var result = await _store.Get(get);
-        if (result == null) return new NullBulkString();
-        return new BulkString(result);
+        return result switch
+        {
+            null => new NullBulkString(),
+            _ => new BulkString(result)
+        };
     }
 
     private async Task<Ok> HandleSet(Set set)
