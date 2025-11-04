@@ -83,8 +83,15 @@ public static class Parser
             "llen" => BuildLLen(requestData),
             "lpop" => BuildLPop(requestData),
             "blpop" => BuildBlPop(requestData),
-            _ => throw new FormatException($"Unknown RESP format, first word {requestData[0]}")
+            "type" => BuildGetType(requestData),
+            _ => throw new FormatException($"Unknown RESP format, first word {requestData[0].ToLower()}")
         };
+    }
+
+    private static GetType BuildGetType(List<string> requestData)
+    {
+        if (requestData.Count is not 2) throw new FormatException("Invalid RESP format");
+        return new GetType(requestData[1]);
     }
 
     private static BlPop BuildBlPop(List<string> requestData)
@@ -95,7 +102,7 @@ public static class Parser
         return new BlPop(requestData[1], (int)(seconds * 1000));
     }
 
-    private static Request BuildLPop(List<string> requestData)
+    private static LPop BuildLPop(List<string> requestData)
     {
         if (requestData.Count is not (2 or 3)) throw new FormatException("Invalid RESP format");
         if (requestData.Count == 2) return new LPop(requestData[1]);
