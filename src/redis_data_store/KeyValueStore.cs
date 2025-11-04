@@ -11,6 +11,7 @@ public class KeyValueStore
     private readonly Dictionary<string, LinkedList<Request>> _blockedRequests = new();
     private readonly Dictionary<string, RedisObject> _dataStore = new();
     private readonly ILogger<KeyValueStore> _logger;
+    private int _counter = 0;
 
     public KeyValueStore(ILogger<KeyValueStore> logger)
     {
@@ -81,6 +82,8 @@ public class KeyValueStore
         await foreach (var request in _requestQueue.Reader.ReadAllAsync())
             try
             {
+                _counter++;
+                _logger.LogInformation($"Processing request: {request}");
                 switch (request)
                 {
                     case Set set:
@@ -118,6 +121,13 @@ public class KeyValueStore
                 // we need to check if we can clear r
                 if (request is IHasKey hasKeyRequest and (resp.Set or resp.RPush or resp.LPush or resp.BlPop))
                     CheckBlockedRequests(hasKeyRequest);
+
+                if (_counter >= 10_000)
+                {
+                    _logger.LogInformation("Cleaning blocked requests");
+                    CleanBlockedRequests();
+                    _counter = 0;
+                }
             }
             catch (Exception e)
             {
@@ -154,21 +164,47 @@ public class KeyValueStore
         // Clear the completed requests from the blocked queue
         _logger.LogInformation("Completed {count} requests for {key}", completed.Count, request.Key);
         foreach (var item in completed) blockedRequests.Remove(item);
-        if (blockedRequests.Count == 0) _dataStore.Remove(request.Key);
+        if (blockedRequests.Count == 0) _blockedRequests.Remove(request.Key);
+    }
+
+    private void CleanBlockedRequests()
+    {
+        _logger.LogInformation("Cleaning blocked requests");
+        var emptyKeys = new List<string>();
+        var deadRequestCount = 0;
+
+        foreach (var (key, list) in _blockedRequests)
+        {
+            var toRemove = new List<Request>();
+            foreach (var request in list)
+                if (request is BlPop { TaskSource.Task.IsCompleted: true })
+                {
+                    toRemove.Add(request);
+                    deadRequestCount++;
+                }
+
+            foreach (var request in toRemove) list.Remove(request);
+            if (list.Count == 0) emptyKeys.Add(key);
+        }
+
+        _logger.LogInformation("Removed {count} requests dead blocked reqquests", deadRequestCount);
+        foreach (var key in emptyKeys) _blockedRequests.Remove(key);
     }
 
     private void HandleBlPop(BlPop blPop)
     {
-        if (_dataStore.TryGetValue(blPop.Key, out var value) && value is RedisList list)
+        // Note this should never fail as we check for the entry when we clear the blocked list
+        if (!_dataStore.TryGetValue(blPop.Key, out var value) || value is not RedisList list)
         {
-            var popped = list.Values.First();
-            list.Values.RemoveFirst();
-            blPop.TaskSource.SetResult(popped);
+            _logger.LogCritical(
+                "Data structure is in an impossible situation where HandleBlPop was called without {blPop.Key}",
+                blPop.Key);
+            return;
         }
-        else
-        {
-            blPop.TaskSource.SetResult(null);
-        }
+
+        var popped = list.Values.First();
+        list.Values.RemoveFirst();
+        blPop.TaskSource.TrySetResult(popped);
     }
 
     private void HandleLPop(LPop pop)
@@ -210,7 +246,6 @@ public class KeyValueStore
         {
             lPush.Elements.Reverse();
             _dataStore[lPush.Key] = new RedisList(new LinkedList<string>(lPush.Elements));
-            _logger.LogInformation("New list with {elements} under {key}", lPush.Elements, lPush.Key);
             lPush.TaskSource.TrySetResult(lPush.Elements.Count);
         }
     }
@@ -251,13 +286,11 @@ public class KeyValueStore
         if (_dataStore.TryGetValue(rPush.Key, out var value) && value is RedisList list)
         {
             foreach (var element in rPush.Elements) list.Values.AddLast(element);
-            _logger.LogInformation("Added {elements} to existing list {key}", rPush.Elements, rPush.Key);
             rPush.TaskSource.TrySetResult(list.Values.Count);
         }
         else
         {
             _dataStore[rPush.Key] = new RedisList(new LinkedList<string>(rPush.Elements));
-            _logger.LogInformation("New list with {elements} under {key}", rPush.Elements, rPush.Key);
             rPush.TaskSource.TrySetResult(rPush.Elements.Count);
         }
     }
@@ -269,7 +302,6 @@ public class KeyValueStore
             ? 0
             : set.ExpiryMs + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var newEntry = new RedisBasicEntry(set.Value, expiryTime);
-        _logger.LogInformation("Creating new entry {newEntry}", newEntry);
         _dataStore[set.Key] = newEntry;
         set.TaskSource.TrySetResult(true);
     }
@@ -279,22 +311,15 @@ public class KeyValueStore
         _dataStore.TryGetValue(get.Key, out var entry);
         // Case where we have a valid entry
         if (entry is RedisBasicEntry kvEntry && LiveEntry(get.Key, kvEntry))
-        {
-            _logger.LogInformation("Found {entry} from {get}", kvEntry, get);
             get.TaskSource.TrySetResult(kvEntry.Value);
-        }
         else
-        {
-            _logger.LogInformation("Failed to find entry for {get}", get);
             get.TaskSource.TrySetResult(null);
-        }
     }
 
     private bool LiveEntry(string key, RedisBasicEntry entry)
     {
         if (entry.ExpiryMs == 0 || entry.ExpiryMs > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return true;
         // Remove the dead value
-        _logger.LogInformation("Found dead {entry}. Removing.", entry);
         _dataStore.Remove(key);
         return false;
     }

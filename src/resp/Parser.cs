@@ -91,7 +91,8 @@ public static class Parser
     {
         if (requestData.Count is not (2 or 3)) throw new FormatException("Invalid RESP format");
         if (requestData.Count == 2) return new BlPop(requestData[1]);
-        return new BlPop(requestData[1], int.Parse(requestData[2]) * 1000);
+        var seconds = float.Parse(requestData[2]);
+        return new BlPop(requestData[1], (int)(seconds * 1000));
     }
 
     private static Request BuildLPop(List<string> requestData)

@@ -85,7 +85,11 @@ public class Server(ILogger<Server> logger, Context ctx)
     private async Task<Response> HandleBlPop(BlPop blPop)
     {
         var result = await _store.BlPop(blPop);
-        return new Array([blPop.Key, result]);
+        return result switch
+        {
+            null => new NullArray(),
+            _ => new Array([blPop.Key, result])
+        };
     }
 
 
